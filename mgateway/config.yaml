@@ -1,0 +1,38 @@
+routes:
+  - id: users_get
+    method: GET
+    path: /users
+    upstream:
+      strategy: round_robin
+      targets: 
+        - http://localhost:8082
+        - http://localhost:8083
+    middlewares:
+      - name: auth
+        config:
+          type: jwt
+          secret: "mysecretkey"
+
+      - name: rate_limit
+        config:
+          type: in_memory
+          capacity: 10
+          rate: 2
+      - name: transform
+        config:
+          request:
+            header:
+              add:
+                - name: X-Gateway-Id
+                  value: "1234"
+              remove:
+                - X-Request-Id
+            query_param:
+              add:
+                - name: version
+                  value: "1.0.0"
+          response:
+            header:
+              add:
+                - name: X-Client-Id
+                  value: "1234"
