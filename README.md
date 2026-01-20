@@ -6,7 +6,7 @@ This repository contains the source code for tutorials from [beyondcruds.com](ht
 
 | Directory | Tutorial | Description |
 |-----------|----------|-------------|
-| `mgateway/` | [Building an API Gateway](https://beyondcruds.com/book/chapter1) | A lightweight API Gateway in Go with routing, load balancing, and middleware |
+| `mgateway/` | [Building an API Gateway](https://beyondcruds.com/book/chapter1/introduction) | A lightweight API Gateway in Go with routing, load balancing, and middleware |
 | `mredis/` | Redis Protocol Implementation | Build a Redis-compatible server from scratch |
 ## Structure
 
