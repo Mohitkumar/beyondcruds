@@ -1,11 +1,10 @@
-package main
+package cmd
 
 import (
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"os"
-	"strconv"
 
 	"gitbub.com/mohitkumar/mgateway/config"
 	"gitbub.com/mohitkumar/mgateway/router"
@@ -17,14 +16,12 @@ import (
 var gatewayConfig GatewayConfig
 
 func setupConfig(cmd *cobra.Command, args []string) error {
-	gatewayConfig.Host = viper.GetString("host")
 	gatewayConfig.Port = viper.GetInt("port")
 	gatewayConfig.ConfigFilePath = viper.GetString("config-path")
 	return nil
 }
 
 func setupFlags(cmd *cobra.Command) error {
-	cmd.Flags().String("host", "0.0.0.0", "http host name")
 	cmd.Flags().Int("port", 8081, "gateway port")
 	cmd.Flags().String("config-path", "./config.yaml", "route config file path")
 	return viper.BindPFlags(cmd.Flags())
@@ -43,23 +40,33 @@ func run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err = http.ListenAndServe(gatewayConfig.Host+":"+strconv.Itoa(gatewayConfig.Port), router); err != nil {
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", gatewayConfig.Port))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("serving api gateway on :%d\n", gatewayConfig.Port)
+	if err = http.Serve(l, router); err != nil {
 		return err
 	}
 	return nil
 }
 
-func main() {
-	cmd := &cobra.Command{
-		Use:     "ApiGateway",
-		RunE:    run,
-		PreRunE: setupConfig,
-	}
-	if err := setupFlags(cmd); err != nil {
-		log.Fatal(err)
-	}
+var rootCmd = &cobra.Command{
+	Use:     "ApiGateway",
+	RunE:    run,
+	PreRunE: setupConfig,
+}
 
-	if err := cmd.Execute(); err != nil {
-		log.Fatal(err)
+func init() {
+	if err := setupFlags(rootCmd); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

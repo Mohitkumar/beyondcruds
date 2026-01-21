@@ -1,7 +1,6 @@
-package main
+package cmd
 
 type GatewayConfig struct {
-	Host           string
 	Port           int
 	ConfigFilePath string
 }

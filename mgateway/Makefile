@@ -5,10 +5,10 @@ BIN := bin
 
 build:
 	@mkdir -p bin
-	$(GO_CMD) build -o $(BIN)/gateway ./cmd/gateway
+	$(GO_CMD) build -o $(BIN)/gateway .
 
 run:
-	./bin/gateway
+	$(GO_CMD) run .
 
 test:
 	$(GO_CMD) test -v ./...
