@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"gitbub.com/mohitkumar/mgateway/config"
-	routerpkg "gitbub.com/mohitkumar/mgateway/router"
+	"github.com/mohitkumar/mgateway/config"
+	routerpkg "github.com/mohitkumar/mgateway/router"
 	"github.com/golang-jwt/jwt/v5"
 )
 

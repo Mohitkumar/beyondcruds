@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"os"
 
-	"gitbub.com/mohitkumar/mgateway/config"
-	"gitbub.com/mohitkumar/mgateway/router"
+	"github.com/mohitkumar/mgateway/config"
+	"github.com/mohitkumar/mgateway/router"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"

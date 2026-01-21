@@ -1,3 +1,3 @@
-module gitbub.com/mohitkumar/mredis
+module github.com/mohitkumar/mredis
 
 go 1.25.4

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"gitbub.com/mohitkumar/mgateway/config"
-	"gitbub.com/mohitkumar/mgateway/lb"
-	"gitbub.com/mohitkumar/mgateway/middleware"
+	"github.com/mohitkumar/mgateway/config"
+	"github.com/mohitkumar/mgateway/lb"
+	"github.com/mohitkumar/mgateway/middleware"
 )
 
 var _ http.Handler = (*Router)(nil)

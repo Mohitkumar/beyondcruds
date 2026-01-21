@@ -5,8 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitbub.com/mohitkumar/mgateway/config"
-	"gitbub.com/mohitkumar/mgateway/proxy"
+	"github.com/mohitkumar/mgateway/config"
+	"github.com/mohitkumar/mgateway/proxy"
 )
 
 var _ http.Handler = (*LoadBalancer)(nil)

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"gitbub.com/mohitkumar/mgateway/config"
-	"gitbub.com/mohitkumar/mgateway/ratelimit"
-	"gitbub.com/mohitkumar/mgateway/router"
+	"github.com/mohitkumar/mgateway/config"
+	"github.com/mohitkumar/mgateway/ratelimit"
+	"github.com/mohitkumar/mgateway/router"
 )
 
 func TestRateLimiter_Allow(t *testing.T) {

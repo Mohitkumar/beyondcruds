@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"gitbub.com/mohitkumar/mgateway/config"
+	"github.com/mohitkumar/mgateway/config"
 )
 
 type Middleware func(http.Handler) http.Handler

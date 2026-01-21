@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gitbub.com/mohitkumar/mgateway/cmd"
+	"github.com/mohitkumar/mgateway/cmd"
 )
 
 func main() {

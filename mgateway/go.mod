@@ -1,4 +1,4 @@
-module gitbub.com/mohitkumar/mgateway
+module github.com/mohitkumar/mgateway
 
 go 1.25.4
 

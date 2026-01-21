@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"gitbub.com/mohitkumar/mgateway/transform"
+	"github.com/mohitkumar/mgateway/transform"
 )
 
 type TransformMiddlewareFactory struct{}

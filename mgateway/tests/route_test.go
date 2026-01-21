@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitbub.com/mohitkumar/mgateway/config"
-	"gitbub.com/mohitkumar/mgateway/router"
+	"github.com/mohitkumar/mgateway/config"
+	"github.com/mohitkumar/mgateway/router"
 )
 
 func TestRoute(t *testing.T) {

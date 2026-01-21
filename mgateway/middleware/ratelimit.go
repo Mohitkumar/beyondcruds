@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"gitbub.com/mohitkumar/mgateway/ratelimit"
+	"github.com/mohitkumar/mgateway/ratelimit"
 )
 
 var _ MiddlewareFactory = (*RatelimitMiddlewareFactory)(nil)
