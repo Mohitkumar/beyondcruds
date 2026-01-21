@@ -15,7 +15,7 @@ routes:
 
       - name: rate_limit
         config:
-          type: in_memory
+          key: ip
           capacity: 10
           rate: 2
       - name: transform

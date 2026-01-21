@@ -15,32 +15,49 @@ func (m *RatelimitMiddlewareFactory) Name() string {
 }
 
 func (m *RatelimitMiddlewareFactory) Create(cfg map[string]any) (Middleware, error) {
-	var limiter ratelimit.RateLimiter
-	limiterType := "in_memory"
-	typeStr, ok := cfg["type"]
-	if ok {
-		limiterType = typeStr.(string)
+	// Get rate and capacity with defaults
+	rate := 2
+	capacity := 10
+
+	if r, ok := cfg["rate"]; ok {
+		rate = toInt(r)
 	}
-	switch limiterType {
-	case "in_memory":
-		limiter = ratelimit.NewinMemoryRateLimiterDefault()
-		capacityStr, capOk := cfg["capacity"]
-		rateStr, rateOk := cfg["rate"]
-		if capOk && rateOk {
-			capacity := capacityStr.(int)
-			rate := rateStr.(int)
-			limiter = ratelimit.NewinMemoryRateLimiter(rate, capacity)
-		}
-	default:
-		limiter = ratelimit.NewinMemoryRateLimiterDefault()
+	if c, ok := cfg["capacity"]; ok {
+		capacity = toInt(c)
 	}
+
+	// Create the rate limiter
+	limiter := ratelimit.NewInMemoryRateLimiter(rate, capacity)
+
+	// Get key extraction strategy (default: ip)
+	keyType := "ip"
+	if k, ok := cfg["key"].(string); ok {
+		keyType = k
+	}
+	keyExtractor := ratelimit.GetKeyExtractor(keyType)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !limiter.Allow() {
+			// Extract key based on configured strategy
+			key := keyExtractor(r)
+
+			if !limiter.Allow(key) {
 				http.Error(w, "rate limited", http.StatusTooManyRequests)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+// toInt converts interface{} to int, handling both int and float64
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
 }
