@@ -47,11 +47,13 @@ func NewRouter(cfg config.Config) (*Router, error) {
 
 func buildHandler(upstream config.UpstreamConfig, middlewares []config.MiddlewareConfig, route Route) (http.Handler, error) {
 	loadBalancer := lb.NewLoadBalancer(upstream)
-	handler := middleware.MetricsMiddleware(route.Path)(loadBalancer)
-	handler, err := middleware.Build(handler, middlewares)
+	// Build middleware chain from config (auth, rate_limit, etc.)
+	handler, err := middleware.Build(loadBalancer, middlewares)
 	if err != nil {
 		return nil, err
 	}
+	// Apply metrics middleware as the outermost layer to record all requests
+	handler = middleware.MetricsMiddleware(route.Path)(handler)
 	return handler, nil
 }
 

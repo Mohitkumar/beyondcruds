@@ -12,7 +12,3 @@ scrape_configs:
           service: 'mgateway'
           instance: 'gateway-1'
 
-  # Optional: Add Prometheus self-monitoring
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']

@@ -50,7 +50,6 @@ docker-run: docker-build docker-up
 	@echo "=========================================="
 	@echo "Gateway:        http://localhost:8081"
 	@echo "Prometheus UI:  http://localhost:9090"
-	@echo "Grafana UI:     http://localhost:3000 (admin/admin)"
 	@echo "Metrics:        http://localhost:8889/metrics"
 	@echo ""
 	@echo "View logs with: make docker-logs"
