@@ -1,0 +1,9 @@
+bin/
+tests/
+.git/
+.gitignore
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+prometheus.yml

@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'mgateway-monitor'
+
+scrape_configs:
+  - job_name: 'mgateway'
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          service: 'mgateway'
+          instance: 'gateway-1'
+
+  # Optional: Add Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

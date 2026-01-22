@@ -8,6 +8,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"time"
+
+	"github.com/mohitkumar/mgateway/observe"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func NewProxy(urlStr string) http.Handler {
@@ -38,6 +42,12 @@ func NewProxy(urlStr string) http.Handler {
 				status = http.StatusGatewayTimeout
 			}
 		}
+		observe.RequestsFailed.Add(
+			r.Context(),
+			1,
+			metric.WithAttributes(attribute.String("path", r.URL.Path)),
+			metric.WithAttributes(attribute.String("reason", "upstream_error")),
+		)
 		w.WriteHeader(status)
 		w.Write([]byte(msg))
 	}

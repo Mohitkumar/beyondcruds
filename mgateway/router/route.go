@@ -32,7 +32,7 @@ func NewRouter(cfg config.Config) (*Router, error) {
 			Path:    routeConfig.Path,
 			Targets: routeConfig.Upstream.Targets,
 		}
-		handler, err := buildHandler(routeConfig.Upstream, routeConfig.Middlewares)
+		handler, err := buildHandler(routeConfig.Upstream, routeConfig.Middlewares, route)
 		if err != nil {
 			return nil, err
 		}
@@ -45,9 +45,10 @@ func NewRouter(cfg config.Config) (*Router, error) {
 	return router, nil
 }
 
-func buildHandler(upstream config.UpstreamConfig, middlewares []config.MiddlewareConfig) (http.Handler, error) {
+func buildHandler(upstream config.UpstreamConfig, middlewares []config.MiddlewareConfig, route Route) (http.Handler, error) {
 	loadBalancer := lb.NewLoadBalancer(upstream)
-	handler, err := middleware.Build(loadBalancer, middlewares)
+	handler := middleware.MetricsMiddleware(route.Path)(loadBalancer)
+	handler, err := middleware.Build(handler, middlewares)
 	if err != nil {
 		return nil, err
 	}
