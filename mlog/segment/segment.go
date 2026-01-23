@@ -80,9 +80,9 @@ func (s *Segment) ReadAt(offset uint64) (*Record, error) {
 	}
 
 	relOffset := uint32(offset - s.BaseOffset)
-	indexEntry, err := s.index.Read(relOffset)
-	if err != nil {
-		return nil, err
+	indexEntry, found := s.index.Find(relOffset)
+	if !found {
+		return nil, fmt.Errorf("index entry not found for relative offset %d", relOffset)
 	}
 
 	if _, err := s.logFile.Seek(int64(indexEntry.Position), io.SeekStart); err != nil {
@@ -102,12 +102,12 @@ func (s *Segment) ReadAt(offset uint64) (*Record, error) {
 func (s *Segment) Recover() error {
 	var startPos uint64 = 0
 	if s.index.Size() > 0 {
-		last, err := s.index.Read(uint32(s.index.Size() - IndexEntrySize))
-		if err != nil {
-			return err
+		last, found := s.index.Find(uint32(s.index.Size() - IndexEntrySize))
+		if !found {
+			return fmt.Errorf("index entry not found")
 		}
 		startPos = last.Position
-		s.NextOffset = s.BaseOffset + uint64(last.RelOffset)
+		s.NextOffset = s.BaseOffset + uint64(last.RelativeOffset)
 	}
 
 	pos := startPos
