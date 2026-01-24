@@ -132,6 +132,33 @@ func (idx *Index) Find(relOffset uint32) (IndexEntry, bool) {
 	return result, true
 }
 
+func (idx *Index) Last() (IndexEntry, bool) {
+	count := idx.size / IndexEntrySize
+	if count == 0 {
+		return IndexEntry{}, false
+	}
+	return idx.Entry(count - 1), true
+}
+
+func (idx *Index) TruncateAfter(relOffset uint32) error {
+	var truncateSize int64 = idx.size
+	count := idx.size / IndexEntrySize
+
+	for i := count - 1; i >= 0; i-- {
+		entry := idx.Entry(i)
+		if entry.RelativeOffset <= relOffset {
+			break
+		}
+		truncateSize -= IndexEntrySize
+	}
+
+	if truncateSize == idx.size {
+		return nil
+	}
+	idx.size = truncateSize
+	return idx.file.Truncate(idx.size)
+}
+
 func (idx *Index) Size() int64 {
 	return idx.size
 }

@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	IndexIntervalBytes = 4 * 1024 // 4KB
+	IndexIntervalBytes = 4 * 1024    // 4KB
+	MaxSegmentBytes    = 1024 * 1024 // 1MB
 )
 
 // Segement represents a log segment consisting of a log file and an index file.
@@ -42,6 +43,32 @@ func NewSegment(baseOffset uint64, dir string) (*Segment, error) {
 	}, nil
 }
 
+func LoadExistingSegment(baseOffset uint64, dir string) (*Segment, error) {
+	logFilePath := dir + "/" + formatLogFileName(baseOffset)
+	logFile, err := os.OpenFile(logFilePath, os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	}
+	indexFilePath := dir + "/" + formatIndexFileName(baseOffset)
+	index, err := OpenIndex(indexFilePath)
+	if err != nil {
+		logFile.Close()
+		return nil, err
+	}
+	segment := &Segment{
+		BaseOffset: baseOffset,
+		NextOffset: baseOffset,
+		logFile:    logFile,
+		index:      index,
+	}
+	if err := segment.Recover(); err != nil {
+		logFile.Close()
+		index.Close()
+		return nil, err
+	}
+	return segment, nil
+}
+
 func formatLogFileName(baseOffset uint64) string {
 	return fmt.Sprintf("%020d.log", baseOffset)
 }
@@ -63,7 +90,7 @@ func (s *Segment) Append(ts uint64, value []byte) (uint64, error) {
 	}
 
 	s.bytesSinceLastIndex += n
-	if s.bytesSinceLastIndex >= IndexIntervalBytes {
+	if s.bytesSinceLastIndex >= IndexIntervalBytes || offset == s.BaseOffset {
 		if err := s.index.Write(uint32(offset-s.BaseOffset), uint64(pos)); err != nil {
 			return 0, err
 		}
@@ -100,34 +127,58 @@ func (s *Segment) ReadAt(offset uint64) (*Record, error) {
 }
 
 func (s *Segment) Recover() error {
-	var startPos uint64 = 0
-	if s.index.Size() > 0 {
-		last, found := s.index.Find(uint32(s.index.Size() - IndexEntrySize))
-		if !found {
-			return fmt.Errorf("index entry not found")
-		}
-		startPos = last.Position
-		s.NextOffset = s.BaseOffset + uint64(last.RelativeOffset)
+	var (
+		startPos   int64 = 0
+		nextOffset       = s.BaseOffset
+	)
+
+	if last, ok := s.index.Last(); ok {
+		startPos = int64(last.Position)
+		nextOffset = s.BaseOffset + uint64(last.RelativeOffset)
+	}
+
+	if _, err := s.logFile.Seek(startPos, io.SeekStart); err != nil {
+		return err
 	}
 
 	pos := startPos
+	offset := nextOffset
+
 	for {
-		_, err := s.logFile.Seek(int64(pos), io.SeekStart)
+		rec, size, err := DecodeRecord(s.logFile)
 		if err != nil {
 			break
 		}
 
-		rec, n, err := DecodeRecord(s.logFile)
-		if err != nil {
-			_ = s.logFile.Truncate(int64(pos))
+		if rec.Offset != offset {
 			break
 		}
 
-		pos += n
-		s.NextOffset = rec.Offset + 1
+		pos += int64(size)
+		offset++
 	}
 
+	// truncate log at last good position
+	if err := s.logFile.Truncate(pos); err != nil {
+		return err
+	}
+
+	// truncate index if it points past log
+	s.index.TruncateAfter(uint32(pos))
+
+	s.NextOffset = offset
 	return nil
+}
+
+func (s *Segment) IsFull() bool {
+	info, err := s.logFile.Stat()
+	if err != nil {
+		return false
+	}
+	if info.Size() >= MaxSegmentBytes {
+		return true
+	}
+	return false
 }
 
 func (s *Segment) Close() error {

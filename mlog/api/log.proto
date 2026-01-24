@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "github.com/beyondcruds/mlog/api";
+
+message Record {
+    uint64 offset = 1;
+    uint64 timestamp = 2;
+    bytes value = 3;
+}

@@ -1,7 +1,6 @@
 package segment
 
 import (
-	"fmt"
 	"os"
 	"testing"
 )
@@ -43,10 +42,66 @@ func TestIndexWriteRead(t *testing.T) {
 
 	for _, e := range entries {
 		entry, found := index.Find(e.relOffset)
-		fmt.Printf("Index Entry: %v", entry)
 		if !found {
 			t.Fatalf("failed to read index entry: %v", entry)
 		}
+		if entry.RelativeOffset != e.relOffset || entry.Position != e.position {
+			t.Errorf("index entry mismatch: got (%d, %d), want (%d, %d)",
+				entry.RelativeOffset, entry.Position, e.relOffset, e.position)
+		}
+	}
+}
+
+func TestIndexGrow(t *testing.T) {
+	index, teardown := setupTest(t)
+	defer teardown()
+
+	initialCap := len(index.mmap)
+
+	entriesToWrite := (initialCap / IndexEntrySize) + 10 // Write more than initial capacity
+
+	for i := 0; i < entriesToWrite; i++ {
+		if err := index.Write(uint32(i), uint64(i*100)); err != nil {
+			t.Fatalf("failed to write index entry: %v", err)
+		}
+	}
+
+	if len(index.mmap) <= initialCap {
+		t.Errorf("index mmap did not grow as expected")
+	}
+
+	// Verify last entry
+	lastEntry, found := index.Find(uint32(entriesToWrite - 1))
+	if !found {
+		t.Fatalf("failed to read last index entry")
+	}
+	if lastEntry.RelativeOffset != uint32(entriesToWrite-1) || lastEntry.Position != uint64((entriesToWrite-1)*100) {
+		t.Errorf("last index entry mismatch	: got (%d, %d), want (%d, %d)",
+			lastEntry.RelativeOffset, lastEntry.Position, entriesToWrite-1, (entriesToWrite-1)*100)
+	}
+}
+
+func TestIndexEntry(t *testing.T) {
+	index, teardown := setupTest(t)
+	defer teardown()
+
+	entries := []struct {
+		relOffset uint32
+		position  uint64
+	}{
+		{0, 0},
+		{1, 100},
+		{2, 205},
+	}
+
+	for _, e := range entries {
+		if err := index.Write(e.relOffset, e.position); err != nil {
+			t.Fatalf("failed to write index entry: %v", err)
+		}
+	}
+
+	for i, e := range entries {
+		entry := index.Entry(int64(i))
 		if entry.RelativeOffset != e.relOffset || entry.Position != e.position {
 			t.Errorf("index entry mismatch: got (%d, %d), want (%d, %d)",
 				entry.RelativeOffset, entry.Position, e.relOffset, e.position)
