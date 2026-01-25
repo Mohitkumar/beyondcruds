@@ -140,13 +140,13 @@ func (idx *Index) Last() (IndexEntry, bool) {
 	return idx.Entry(count - 1), true
 }
 
-func (idx *Index) TruncateAfter(relOffset uint32) error {
+func (idx *Index) TruncateAfter(position uint64) error {
 	var truncateSize int64 = idx.size
 	count := idx.size / IndexEntrySize
 
 	for i := count - 1; i >= 0; i-- {
 		entry := idx.Entry(i)
-		if entry.RelativeOffset <= relOffset {
+		if entry.Position <= position {
 			break
 		}
 		truncateSize -= IndexEntrySize

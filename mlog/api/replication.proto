@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package replication;
+
+option go_package = "github.com/mohitkumar/mlog/api/replication";
+
+// ReplicationService defines the RPCs for log replication between brokers.
+service ReplicationService {
+  // Fetch returns a stream of log entries from a partition.
+  rpc Fetch(FetchRequest) returns (stream FetchResponse);
+  // ReportLEO allows replicas to report their Log End Offset (LEO) to the leader.
+  rpc ReportLEO(ReportLEORequest) returns (ReportLEOResponse);
+}
+
+message FetchRequest {
+  string partition_id = 1;
+  int64 offset = 2;
+  int32 max_bytes = 3;
+}
+
+message FetchResponse {
+  int64 offset = 1;
+  bytes payload = 2;
+}
+
+message ReportLEORequest {
+  string partition_id = 1;
+  string replica_id = 2;
+  int64 leo = 3;
+}
+
+message ReportLEOResponse {}

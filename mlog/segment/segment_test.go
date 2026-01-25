@@ -31,18 +31,15 @@ func TestSegmentReadWrite(t *testing.T) {
 	segment, teardown := setupTestSegment(t)
 	defer teardown()
 
-	records := []struct {
-		timestamp uint64
-		value     []byte
-	}{
-		{1625152800, []byte("first record")},
-		{1625152860, []byte("second record")},
-		{1625152920, []byte("third record")},
+	records := [][]byte{
+		[]byte("first record"),
+		[]byte("second record"),
+		[]byte("third record"),
 	}
 
 	var offsets []uint64
 	for _, r := range records {
-		offset, err := segment.Append(r.timestamp, r.value)
+		offset, err := segment.Append(r)
 		if err != nil {
 			t.Fatalf("failed to append record: %v", err)
 		}
@@ -54,9 +51,8 @@ func TestSegmentReadWrite(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to read record: %v", err)
 		}
-		if rec.Timestamp != r.timestamp || string(rec.Value) != string(r.value) {
-			t.Errorf("record mismatch: got (ts: %d, value: %s), want (ts: %d, value: %s)",
-				rec.Timestamp, rec.Value, r.timestamp, r.value)
+		if string(rec.Payload) != string(r) {
+			t.Errorf("record mismatch: got %s, want %s", rec.Payload, r)
 		}
 	}
 }
@@ -69,7 +65,7 @@ func TestSegmentReadWriteLarge(t *testing.T) {
 	numRecords := 10000
 	for i := 0; i < numRecords; i++ {
 		value := []byte("record number " + strconv.Itoa(i))
-		_, err := segment.Append(1625152800+uint64(i*60), value)
+		_, err := segment.Append(value)
 		if err != nil {
 			t.Fatalf("failed to append record %d: %v", i, err)
 		}
@@ -81,8 +77,8 @@ func TestSegmentReadWriteLarge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to read record %d: %v", i, err)
 		}
-		if string(rec.Value) != string(expectedValue) {
-			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Value, expectedValue)
+		if string(rec.Payload) != string(expectedValue) {
+			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Payload, expectedValue)
 		}
 	}
 }
@@ -97,7 +93,7 @@ func TestSegmentOutOfRangeRead(t *testing.T) {
 		t.Fatalf("expected error for out-of-range read, got nil")
 	}
 
-	_, err = segment.Append(1625152800, []byte("only record"))
+	_, err = segment.Append([]byte("only record"))
 	if err != nil {
 		t.Fatalf("failed to append record: %v", err)
 	}
@@ -113,17 +109,14 @@ func TestLoadExistingSegment(t *testing.T) {
 	segment, teardown := setupTestSegment(t)
 	defer teardown()
 
-	records := []struct {
-		timestamp uint64
-		value     []byte
-	}{
-		{1625152800, []byte("first record")},
-		{1625152860, []byte("second record")},
-		{1625152920, []byte("third record")},
+	records := [][]byte{
+		[]byte("first record"),
+		[]byte("second record"),
+		[]byte("third record"),
 	}
 
 	for _, r := range records {
-		_, err := segment.Append(r.timestamp, r.value)
+		_, err := segment.Append(r)
 		if err != nil {
 			t.Fatalf("failed to append record: %v", err)
 		}
@@ -143,9 +136,9 @@ func TestLoadExistingSegment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to read record: %v", err)
 		}
-		if rec.Timestamp != r.timestamp || string(rec.Value) != string(r.value) {
-			t.Errorf("record mismatch: got (ts: %d, value: %s), want (ts: %d, value: %s)",
-				rec.Timestamp, rec.Value, r.timestamp, r.value)
+		if string(rec.Payload) != string(r) {
+			t.Errorf("record mismatch: got value: %s), want value: %s)",
+				rec.Payload, r)
 		}
 	}
 }
@@ -158,7 +151,7 @@ func TestLoadExistingSegmentLarge(t *testing.T) {
 	numRecords := 10000
 	for i := 0; i < numRecords; i++ {
 		value := []byte("record number " + strconv.Itoa(i))
-		_, err := segment.Append(1625152800+uint64(i*60), value)
+		_, err := segment.Append(value)
 		if err != nil {
 			t.Fatalf("failed to append record %d: %v", i, err)
 		}
@@ -179,8 +172,8 @@ func TestLoadExistingSegmentLarge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to read record %d: %v", i, err)
 		}
-		if string(rec.Value) != string(expectedValue) {
-			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Value, expectedValue)
+		if string(rec.Payload) != string(expectedValue) {
+			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Payload, expectedValue)
 		}
 	}
 }

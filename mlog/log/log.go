@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/mohitkumar/mlog/api"
+	"github.com/mohitkumar/mlog/api/log"
 	"github.com/mohitkumar/mlog/segment"
 )
 
@@ -67,10 +67,10 @@ func NewLog(dir string) (*Log, error) {
 	return log, nil
 }
 
-func (l *Log) Append(record *api.Record) (uint64, error) {
+func (l *Log) Append(record *log.Record) (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	off, err := l.activeSegment.Append(record.Timestamp, record.Value)
+	off, err := l.activeSegment.Append(record.Payload)
 	if err != nil {
 		return 0, err
 	}
@@ -84,7 +84,7 @@ func (l *Log) Append(record *api.Record) (uint64, error) {
 	return off, nil
 }
 
-func (l *Log) Read(offset uint64) (*api.Record, error) {
+func (l *Log) Read(offset uint64) (*log.Record, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	var targetSegment *segment.Segment
@@ -101,10 +101,9 @@ func (l *Log) Read(offset uint64) (*api.Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &api.Record{
-		Offset:    r.Offset,
-		Timestamp: r.Timestamp,
-		Value:     r.Value,
+	return &log.Record{
+		Offset:  r.Offset,
+		Payload: r.Payload,
 	}, nil
 }
 

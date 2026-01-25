@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/mohitkumar/mlog/api"
+	l "github.com/mohitkumar/mlog/api/log"
 )
 
 func setupTestLog(t *testing.T) (*Log, func()) {
@@ -26,21 +26,18 @@ func TestLogAppendRead(t *testing.T) {
 	log, teardown := setupTestLog(t)
 	defer teardown()
 
-	records := []struct {
-		timestamp uint64
-		value     []byte
-	}{
-		{1625152800, []byte("first log record")},
-		{1625152860, []byte("second log record")},
-		{1625152920, []byte("third log record")},
+	records := [][]byte{
+		[]byte("first log record"),
+		[]byte("second log record"),
+		[]byte("third log record"),
 	}
 
 	var offsets []uint64
 	for _, r := range records {
-		offset, err := log.Append(&api.Record{
-			Timestamp: r.timestamp,
-			Value:     r.value,
+		offset, err := log.Append(&l.Record{
+			Payload: r,
 		})
+
 		if err != nil {
 			t.Fatalf("failed to append record: %v", err)
 		}
@@ -52,9 +49,9 @@ func TestLogAppendRead(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to read record: %v", err)
 		}
-		if rec.Timestamp != r.timestamp || string(rec.Value) != string(r.value) {
-			t.Errorf("record mismatch: got (ts: %d, value: %s), want (ts: %d, value: %s)",
-				rec.Timestamp, rec.Value, r.timestamp, r.value)
+		if string(rec.Payload) != string(r) {
+			t.Errorf("record mismatch: got (payload: %s), want (payload: %s)",
+				rec.Payload, r)
 		}
 	}
 }
@@ -75,9 +72,8 @@ func TestLogSegmentRotation(t *testing.T) {
 	numRecords := 100000
 	var lastOffset uint64
 	for i := 0; i < numRecords; i++ {
-		offset, err := log.Append(&api.Record{
-			Timestamp: uint64(1625152800 + i*60),
-			Value:     []byte("log record " + strconv.Itoa(i)),
+		offset, err := log.Append(&l.Record{
+			Payload: []byte("log record " + strconv.Itoa(i)),
 		})
 		if err != nil {
 			t.Fatalf("failed to append record: %v", err)
@@ -94,7 +90,7 @@ func TestLogSegmentRotation(t *testing.T) {
 		t.Fatalf("failed to read last record: %v", err)
 	}
 	expectedValue := "log record " + strconv.Itoa(numRecords-1)
-	if string(rec.Value) != expectedValue {
-		t.Errorf("last record value mismatch: got %s, want %s", rec.Value, expectedValue)
+	if string(rec.Payload) != expectedValue {
+		t.Errorf("last record payload mismatch: got %s, want %s", rec.Payload, expectedValue)
 	}
 }

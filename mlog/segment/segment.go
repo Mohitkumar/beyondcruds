@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/mohitkumar/mlog/api/log"
 )
 
 const (
@@ -77,13 +79,13 @@ func formatIndexFileName(baseOffset uint64) string {
 	return fmt.Sprintf("%020d.idx", baseOffset)
 }
 
-func (s *Segment) Append(ts uint64, value []byte) (uint64, error) {
+func (s *Segment) Append(value []byte) (uint64, error) {
 	pos, err := s.logFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return 0, err
 	}
 	offset := s.NextOffset
-	record := NewRecord(offset, ts, value)
+	record := log.NewRecord(offset, value)
 	n, err := record.Encode(s.logFile)
 	if err != nil {
 		return 0, err
@@ -101,7 +103,7 @@ func (s *Segment) Append(ts uint64, value []byte) (uint64, error) {
 	return offset, nil
 }
 
-func (s *Segment) ReadAt(offset uint64) (*Record, error) {
+func (s *Segment) ReadAt(offset uint64) (*log.Record, error) {
 	if offset < s.BaseOffset || offset >= s.NextOffset {
 		return nil, fmt.Errorf("offset %d out of range [%d, %d)", offset, s.BaseOffset, s.NextOffset)
 	}
@@ -116,7 +118,7 @@ func (s *Segment) ReadAt(offset uint64) (*Record, error) {
 		return nil, err
 	}
 	for {
-		rec, _, err := DecodeRecord(s.logFile)
+		rec, _, err := log.DecodeRecord(s.logFile)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +147,7 @@ func (s *Segment) Recover() error {
 	offset := nextOffset
 
 	for {
-		rec, size, err := DecodeRecord(s.logFile)
+		rec, size, err := log.DecodeRecord(s.logFile)
 		if err != nil {
 			break
 		}
@@ -164,7 +166,7 @@ func (s *Segment) Recover() error {
 	}
 
 	// truncate index if it points past log
-	s.index.TruncateAfter(uint32(pos))
+	s.index.TruncateAfter(uint64(pos))
 
 	s.NextOffset = offset
 	return nil

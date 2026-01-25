@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package metadata;
+
+option go_package = "github.com/mohitkumar/mlog/api/metadata";
+
+message MetadataEvent {
+  oneof event {
+    CreatePartition create_partition = 1;
+    LeaderChange leader_change = 2;
+    ISRUpdate isr_update = 3;
+    HighWatermarkUpdate hw_update = 4;
+  }
+}
+
+message CreatePartition {
+  string partition_id = 1;
+  repeated string replicas = 2;
+}
+
+message LeaderChange {
+  string partition_id = 1;
+  string leader_id = 2;
+  int64 leader_epoch = 3;
+}
+
+message ISRUpdate {
+  string partition_id = 1;
+  repeated string isr = 2;
+}
+
+message HighWatermarkUpdate {
+  string partition_id = 1;
+  int64 offset = 2;
+}
