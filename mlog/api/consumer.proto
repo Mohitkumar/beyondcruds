@@ -13,13 +13,39 @@ service ConsumerService {
 
   // FetchStream streams log entries from a specified topic and partition.
   rpc FetchStream(FetchRequest) returns (stream FetchResponse);
+
+  // CommitOffset commits the offset of the last consumed log entry.
+  rpc CommitOffset(CommitOffsetRequest) returns (CommitOffsetResponse);
+
+  // FetchOffsets fetches the offsets of the last consumed log entries.
+  rpc FetchOffset(FetchOffsetRequest) returns (FetchOffsetResponse);
 }
 
 message FetchRequest {
-  string topic = 1;
-  uint64 offset = 2;
+  string id = 1;
+  string topic = 2;
+  uint64 offset = 3;
 }
 
 message FetchResponse {
   common.LogEntry entry = 1;
+}
+
+message CommitOffsetRequest {
+  string id = 1;
+  string topic = 2;
+  uint64 offset = 3;
+}
+
+message CommitOffsetResponse {
+  bool success = 1;
+}
+
+message FetchOffsetRequest {
+  string id = 1;
+  string topic = 2;
+}
+
+message FetchOffsetResponse {
+  uint64 offset = 1;
 }

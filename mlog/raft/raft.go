@@ -16,6 +16,12 @@ type MetadataRaft struct {
 	applyCh chan *metadata.MetadataEvent
 }
 
+// sendRaftRPC is a placeholder for sending raft messages to peers.
+// TODO: implement transport (gRPC/http) and peer routing.
+func sendRaftRPC(msg raftpb.Message) {
+	_ = msg
+}
+
 func StartMetadataRaft(id uint64, peers []raft.Peer) *MetadataRaft {
 	storage := raft.NewMemoryStorage()
 

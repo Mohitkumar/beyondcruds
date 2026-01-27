@@ -6,9 +6,11 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	consumerapi "github.com/mohitkumar/mlog/api/consumer"
 	"github.com/mohitkumar/mlog/api/leader"
 	"github.com/mohitkumar/mlog/api/producer"
 	"github.com/mohitkumar/mlog/api/replication"
+	consumermgr "github.com/mohitkumar/mlog/consumer"
 	"github.com/mohitkumar/mlog/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -16,13 +18,15 @@ import (
 )
 
 type grpcServer struct {
+	consumerapi.UnimplementedConsumerServiceServer
 	leader.UnimplementedLeaderServiceServer
 	replication.UnimplementedReplicationServiceServer
 	producer.UnimplementedProducerServiceServer
-	topicManager *log.TopicManager
+	topicManager    *log.TopicManager
+	consumerManager *consumermgr.ConsumerManager
 }
 
-func NewGrpcServer(topicManager *log.TopicManager) (*grpc.Server, error) {
+func NewGrpcServer(topicManager *log.TopicManager, consumerManager *consumermgr.ConsumerManager) (*grpc.Server, error) {
 	logger := zap.L().Named("server")
 	zapOpts := []grpc_zap.Option{
 		grpc_zap.WithDurationField(
@@ -49,8 +53,10 @@ func NewGrpcServer(topicManager *log.TopicManager) (*grpc.Server, error) {
 
 	gsrv := grpc.NewServer(grpcOpts...)
 	srv := &grpcServer{
-		topicManager: topicManager,
+		topicManager:    topicManager,
+		consumerManager: consumerManager,
 	}
+	consumerapi.RegisterConsumerServiceServer(gsrv, srv)
 	leader.RegisterLeaderServiceServer(gsrv, srv)
 	replication.RegisterReplicationServiceServer(gsrv, srv)
 	producer.RegisterProducerServiceServer(gsrv, srv)

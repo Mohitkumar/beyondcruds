@@ -3,9 +3,23 @@ GO_CMD := go
 BIN := bin
 DOCKER_COMPOSE := docker-compose
 
-build:
-	@mkdir -p bin
+build: build-mlog build-server build-producer build-consumer
+
+build-mlog:
+	@mkdir -p $(BIN)
 	$(GO_CMD) build -o $(BIN)/mlog .
+
+build-server:
+	@mkdir -p $(BIN)
+	$(GO_CMD) build -o $(BIN)/server ./cmd/server
+
+build-producer:
+	@mkdir -p $(BIN)
+	$(GO_CMD) build -o $(BIN)/producer ./cmd/producer
+
+build-consumer:
+	@mkdir -p $(BIN)
+	$(GO_CMD) build -o $(BIN)/consumer ./cmd/consumer
 
 run:
 	$(GO_CMD) run .

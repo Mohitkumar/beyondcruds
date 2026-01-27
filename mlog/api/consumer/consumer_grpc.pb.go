@@ -26,6 +26,10 @@ type ConsumerServiceClient interface {
 	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (*FetchResponse, error)
 	// FetchStream streams log entries from a specified topic and partition.
 	FetchStream(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (ConsumerService_FetchStreamClient, error)
+	// CommitOffset commits the offset of the last consumed log entry.
+	CommitOffset(ctx context.Context, in *CommitOffsetRequest, opts ...grpc.CallOption) (*CommitOffsetResponse, error)
+	// FetchOffsets fetches the offsets of the last consumed log entries.
+	FetchOffset(ctx context.Context, in *FetchOffsetRequest, opts ...grpc.CallOption) (*FetchOffsetResponse, error)
 }
 
 type consumerServiceClient struct {
@@ -77,6 +81,24 @@ func (x *consumerServiceFetchStreamClient) Recv() (*FetchResponse, error) {
 	return m, nil
 }
 
+func (c *consumerServiceClient) CommitOffset(ctx context.Context, in *CommitOffsetRequest, opts ...grpc.CallOption) (*CommitOffsetResponse, error) {
+	out := new(CommitOffsetResponse)
+	err := c.cc.Invoke(ctx, "/logapi.ConsumerService/CommitOffset", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *consumerServiceClient) FetchOffset(ctx context.Context, in *FetchOffsetRequest, opts ...grpc.CallOption) (*FetchOffsetResponse, error) {
+	out := new(FetchOffsetResponse)
+	err := c.cc.Invoke(ctx, "/logapi.ConsumerService/FetchOffset", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConsumerServiceServer is the server API for ConsumerService service.
 // All implementations must embed UnimplementedConsumerServiceServer
 // for forward compatibility
@@ -85,6 +107,10 @@ type ConsumerServiceServer interface {
 	Fetch(context.Context, *FetchRequest) (*FetchResponse, error)
 	// FetchStream streams log entries from a specified topic and partition.
 	FetchStream(*FetchRequest, ConsumerService_FetchStreamServer) error
+	// CommitOffset commits the offset of the last consumed log entry.
+	CommitOffset(context.Context, *CommitOffsetRequest) (*CommitOffsetResponse, error)
+	// FetchOffsets fetches the offsets of the last consumed log entries.
+	FetchOffset(context.Context, *FetchOffsetRequest) (*FetchOffsetResponse, error)
 	mustEmbedUnimplementedConsumerServiceServer()
 }
 
@@ -97,6 +123,12 @@ func (UnimplementedConsumerServiceServer) Fetch(context.Context, *FetchRequest) 
 }
 func (UnimplementedConsumerServiceServer) FetchStream(*FetchRequest, ConsumerService_FetchStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method FetchStream not implemented")
+}
+func (UnimplementedConsumerServiceServer) CommitOffset(context.Context, *CommitOffsetRequest) (*CommitOffsetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CommitOffset not implemented")
+}
+func (UnimplementedConsumerServiceServer) FetchOffset(context.Context, *FetchOffsetRequest) (*FetchOffsetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchOffset not implemented")
 }
 func (UnimplementedConsumerServiceServer) mustEmbedUnimplementedConsumerServiceServer() {}
 
@@ -150,6 +182,42 @@ func (x *consumerServiceFetchStreamServer) Send(m *FetchResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ConsumerService_CommitOffset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitOffsetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsumerServiceServer).CommitOffset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/logapi.ConsumerService/CommitOffset",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsumerServiceServer).CommitOffset(ctx, req.(*CommitOffsetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConsumerService_FetchOffset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FetchOffsetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsumerServiceServer).FetchOffset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/logapi.ConsumerService/FetchOffset",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsumerServiceServer).FetchOffset(ctx, req.(*FetchOffsetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConsumerService_ServiceDesc is the grpc.ServiceDesc for ConsumerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -160,6 +228,14 @@ var ConsumerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Fetch",
 			Handler:    _ConsumerService_Fetch_Handler,
+		},
+		{
+			MethodName: "CommitOffset",
+			Handler:    _ConsumerService_CommitOffset_Handler,
+		},
+		{
+			MethodName: "FetchOffset",
+			Handler:    _ConsumerService_FetchOffset_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

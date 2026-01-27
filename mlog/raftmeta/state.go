@@ -1,4 +1,4 @@
-package raftmeta
+package broker
 
 import "sync"
 
