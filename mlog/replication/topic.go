@@ -1,4 +1,4 @@
-package log
+package replication
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/mohitkumar/mlog/api/replication"
 	"github.com/mohitkumar/mlog/broker"
+	"github.com/mohitkumar/mlog/log"
 )
 
 type Topic struct {
@@ -68,7 +69,7 @@ func (t *TopicManager) CreateTopic(topic string, replicaCount int) error {
 	}
 
 	// Create log manager for the leader (current broker)
-	logManager, err := NewLogManager(filepath.Join(t.BaseDir, topic))
+	logManager, err := log.NewLogManager(filepath.Join(t.BaseDir, topic))
 	if err != nil {
 		return fmt.Errorf("failed to create log manager: %w", err)
 	}
@@ -205,7 +206,7 @@ func (t *TopicManager) CreateReplicaRemote(topic string, replicaID string, leade
 	}
 
 	// Create log manager for this replica
-	logManager, err := NewLogManager(filepath.Join(t.BaseDir, topic, replicaID))
+	logManager, err := log.NewLogManager(filepath.Join(t.BaseDir, topic, replicaID))
 	if err != nil {
 		return fmt.Errorf("failed to create log manager for replica: %w", err)
 	}

@@ -1,4 +1,4 @@
-package log
+package replication
 
 import (
 	"context"
@@ -9,12 +9,13 @@ import (
 	"github.com/mohitkumar/mlog/api/common"
 	"github.com/mohitkumar/mlog/api/producer"
 	"github.com/mohitkumar/mlog/broker"
+	"github.com/mohitkumar/mlog/log"
 )
 
 type TopicLeader struct {
 	mu        sync.RWMutex
 	Topic     string
-	Log       *LogManager
+	Log       *log.LogManager
 	broker    *broker.Broker
 	NodeID    string
 	followers map[string]*FollowerState
@@ -38,13 +39,16 @@ func (l *TopicLeader) HandleProduce(ctx context.Context, logEntry *common.LogEnt
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if acks == producer.AckMode_ACK_LEADER {
+	switch acks {
+	case producer.AckMode_ACK_LEADER:
 		return offset, nil
-	} else if acks == producer.AckMode_ACK_ALL {
+	case producer.AckMode_ACK_ALL:
 		err := l.waitForAllFollowersToCatchUp(ctx, offset)
 		if err != nil {
 			return 0, fmt.Errorf("failed to wait for all followers to catch up: %w", err)
 		}
+	default:
+		return 0, fmt.Errorf("invalid ack mode: %s", acks)
 	}
 	return offset, nil
 }
@@ -101,7 +105,7 @@ func (l *TopicLeader) HandleFetch(followerID string, offset uint64) ([]*common.L
 	if err != nil {
 		return nil, 0, err
 	}
-	return []*common.LogEntry{msgs}, l.Log.highWatermark, nil
+	return []*common.LogEntry{msgs}, l.Log.HighWatermark(), nil
 }
 
 func (l *TopicLeader) maybeAdvanceHW() {
@@ -111,13 +115,13 @@ func (l *TopicLeader) maybeAdvanceHW() {
 	// Logic: HW is the highest offset replicated to a majority.
 	// For your simple setup (e.g., 1 Leader, 1 Follower):
 	// HW = min(Leader.LEO, all Follower.LastOffset)
-	minOffset := l.Log.leo
+	minOffset := l.Log.LEO()
 	for _, f := range l.followers {
 		if f.LastFetchedOffset < minOffset {
 			minOffset = f.LastFetchedOffset
 		}
 	}
-	l.Log.highWatermark = minOffset
+	l.Log.SetHighWatermark(minOffset)
 }
 
 // MaybeAdvanceHW is a public wrapper for maybeAdvanceHW

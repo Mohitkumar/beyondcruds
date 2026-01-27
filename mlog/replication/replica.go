@@ -1,20 +1,21 @@
-package log
+package replication
 
 import (
 	"context"
 	"fmt"
-	"log"
+
 	"time"
 
 	"github.com/mohitkumar/mlog/api/common"
 	"github.com/mohitkumar/mlog/api/leader"
 	"github.com/mohitkumar/mlog/broker"
+	"github.com/mohitkumar/mlog/log"
 	"google.golang.org/grpc"
 )
 
 type TopicReplica struct {
 	Topic        string
-	Log          *LogManager
+	Log          *log.LogManager
 	broker       *broker.Broker
 	NodeID       string
 	ReplicaID    string
@@ -65,9 +66,7 @@ func (r *TopicReplica) startReplication() {
 		}
 
 		// Get current LEO (Log End Offset) - start replicating from here
-		r.Log.mu.RLock()
-		currentOffset := r.Log.leo
-		r.Log.mu.RUnlock()
+		currentOffset := r.Log.LEO()
 
 		// Create replication request
 		req := &leader.ReplicateRequest{
@@ -78,7 +77,7 @@ func (r *TopicReplica) startReplication() {
 		// Create stream to leader
 		stream, err := r.leaderClient.ReplicateStream(ctx, req)
 		if err != nil {
-			log.Printf("replica %s: failed to create replication stream: %v, retrying in %v", r.ReplicaID, err, reconnectDelay)
+			fmt.Printf("replica %s: failed to create replication stream: %v, retrying in %v", r.ReplicaID, err, reconnectDelay)
 			time.Sleep(reconnectDelay)
 			reconnectDelay = min(reconnectDelay*2, 30*time.Second) // Exponential backoff, max 30s
 			continue
@@ -97,7 +96,7 @@ func (r *TopicReplica) startReplication() {
 
 			resp, err := stream.Recv()
 			if err != nil {
-				log.Printf("replica %s: stream receive error: %v, reconnecting", r.ReplicaID, err)
+				fmt.Printf("replica %s: stream receive error: %v, reconnecting", r.ReplicaID, err)
 				break // Break inner loop to reconnect
 			}
 
@@ -112,20 +111,18 @@ func (r *TopicReplica) startReplication() {
 				Value:  entry.Value,
 			})
 			if err != nil {
-				log.Printf("replica %s: failed to append log entry at offset %d: %v", r.ReplicaID, entry.Offset, err)
+				fmt.Printf("replica %s: failed to append log entry at offset %d: %v", r.ReplicaID, entry.Offset, err)
 				continue
 			}
 
 			// Update LEO after successful append
-			r.Log.mu.Lock()
-			r.Log.leo = entry.Offset + 1
-			currentLEO := r.Log.leo
-			r.Log.mu.Unlock()
+			r.Log.SetLEO(entry.Offset + 1)
+			currentLEO := r.Log.LEO()
 
 			// Report LEO to leader
 			err = r.reportLEO(ctx, currentLEO)
 			if err != nil {
-				log.Printf("replica %s: failed to report LEO %d to leader: %v", r.ReplicaID, currentLEO, err)
+				fmt.Printf("replica %s: failed to report LEO %d to leader: %v", r.ReplicaID, currentLEO, err)
 				// Continue replication even if report fails
 			}
 		}
