@@ -22,10 +22,10 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ReplicationServiceClient interface {
-	// Fetch returns a stream of log entries from a partition.
-	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (ReplicationService_FetchClient, error)
-	// ReportLEO allows replicas to report their Log End Offset (LEO) to the leader.
-	ReportLEO(ctx context.Context, in *ReportLEORequest, opts ...grpc.CallOption) (*ReportLEOResponse, error)
+	// CreateReplica creates a new replica for a topic.
+	CreateReplica(ctx context.Context, in *CreateReplicaRequest, opts ...grpc.CallOption) (*CreateReplicaResponse, error)
+	// DeleteReplica deletes a replica for a topic.
+	DeleteReplica(ctx context.Context, in *DeleteReplicaRequest, opts ...grpc.CallOption) (*DeleteReplicaResponse, error)
 }
 
 type replicationServiceClient struct {
@@ -36,41 +36,18 @@ func NewReplicationServiceClient(cc grpc.ClientConnInterface) ReplicationService
 	return &replicationServiceClient{cc}
 }
 
-func (c *replicationServiceClient) Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (ReplicationService_FetchClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ReplicationService_ServiceDesc.Streams[0], "/replication.ReplicationService/Fetch", opts...)
+func (c *replicationServiceClient) CreateReplica(ctx context.Context, in *CreateReplicaRequest, opts ...grpc.CallOption) (*CreateReplicaResponse, error) {
+	out := new(CreateReplicaResponse)
+	err := c.cc.Invoke(ctx, "/replication.ReplicationService/CreateReplica", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &replicationServiceFetchClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
 
-type ReplicationService_FetchClient interface {
-	Recv() (*FetchResponse, error)
-	grpc.ClientStream
-}
-
-type replicationServiceFetchClient struct {
-	grpc.ClientStream
-}
-
-func (x *replicationServiceFetchClient) Recv() (*FetchResponse, error) {
-	m := new(FetchResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *replicationServiceClient) ReportLEO(ctx context.Context, in *ReportLEORequest, opts ...grpc.CallOption) (*ReportLEOResponse, error) {
-	out := new(ReportLEOResponse)
-	err := c.cc.Invoke(ctx, "/replication.ReplicationService/ReportLEO", in, out, opts...)
+func (c *replicationServiceClient) DeleteReplica(ctx context.Context, in *DeleteReplicaRequest, opts ...grpc.CallOption) (*DeleteReplicaResponse, error) {
+	out := new(DeleteReplicaResponse)
+	err := c.cc.Invoke(ctx, "/replication.ReplicationService/DeleteReplica", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,10 +58,10 @@ func (c *replicationServiceClient) ReportLEO(ctx context.Context, in *ReportLEOR
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility
 type ReplicationServiceServer interface {
-	// Fetch returns a stream of log entries from a partition.
-	Fetch(*FetchRequest, ReplicationService_FetchServer) error
-	// ReportLEO allows replicas to report their Log End Offset (LEO) to the leader.
-	ReportLEO(context.Context, *ReportLEORequest) (*ReportLEOResponse, error)
+	// CreateReplica creates a new replica for a topic.
+	CreateReplica(context.Context, *CreateReplicaRequest) (*CreateReplicaResponse, error)
+	// DeleteReplica deletes a replica for a topic.
+	DeleteReplica(context.Context, *DeleteReplicaRequest) (*DeleteReplicaResponse, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -92,11 +69,11 @@ type ReplicationServiceServer interface {
 type UnimplementedReplicationServiceServer struct {
 }
 
-func (UnimplementedReplicationServiceServer) Fetch(*FetchRequest, ReplicationService_FetchServer) error {
-	return status.Errorf(codes.Unimplemented, "method Fetch not implemented")
+func (UnimplementedReplicationServiceServer) CreateReplica(context.Context, *CreateReplicaRequest) (*CreateReplicaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateReplica not implemented")
 }
-func (UnimplementedReplicationServiceServer) ReportLEO(context.Context, *ReportLEORequest) (*ReportLEOResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReportLEO not implemented")
+func (UnimplementedReplicationServiceServer) DeleteReplica(context.Context, *DeleteReplicaRequest) (*DeleteReplicaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteReplica not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 
@@ -111,41 +88,38 @@ func RegisterReplicationServiceServer(s grpc.ServiceRegistrar, srv ReplicationSe
 	s.RegisterService(&ReplicationService_ServiceDesc, srv)
 }
 
-func _ReplicationService_Fetch_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(FetchRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(ReplicationServiceServer).Fetch(m, &replicationServiceFetchServer{stream})
-}
-
-type ReplicationService_FetchServer interface {
-	Send(*FetchResponse) error
-	grpc.ServerStream
-}
-
-type replicationServiceFetchServer struct {
-	grpc.ServerStream
-}
-
-func (x *replicationServiceFetchServer) Send(m *FetchResponse) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _ReplicationService_ReportLEO_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReportLEORequest)
+func _ReplicationService_CreateReplica_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateReplicaRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).ReportLEO(ctx, in)
+		return srv.(ReplicationServiceServer).CreateReplica(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/replication.ReplicationService/ReportLEO",
+		FullMethod: "/replication.ReplicationService/CreateReplica",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).ReportLEO(ctx, req.(*ReportLEORequest))
+		return srv.(ReplicationServiceServer).CreateReplica(ctx, req.(*CreateReplicaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReplicationService_DeleteReplica_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteReplicaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).DeleteReplica(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/replication.ReplicationService/DeleteReplica",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).DeleteReplica(ctx, req.(*DeleteReplicaRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -158,16 +132,14 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ReplicationServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ReportLEO",
-			Handler:    _ReplicationService_ReportLEO_Handler,
+			MethodName: "CreateReplica",
+			Handler:    _ReplicationService_CreateReplica_Handler,
 		},
-	},
-	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Fetch",
-			Handler:       _ReplicationService_Fetch_Handler,
-			ServerStreams: true,
+			MethodName: "DeleteReplica",
+			Handler:    _ReplicationService_DeleteReplica_Handler,
 		},
 	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "replication.proto",
 }

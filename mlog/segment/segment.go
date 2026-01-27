@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mohitkumar/mlog/api/log"
+	"github.com/mohitkumar/mlog/api/common"
 )
 
 const (
@@ -85,7 +85,7 @@ func (s *Segment) Append(value []byte) (uint64, error) {
 		return 0, err
 	}
 	offset := s.NextOffset
-	record := log.NewRecord(offset, value)
+	record := common.NewLogEntry(offset, value)
 	n, err := record.Encode(s.logFile)
 	if err != nil {
 		return 0, err
@@ -103,7 +103,7 @@ func (s *Segment) Append(value []byte) (uint64, error) {
 	return offset, nil
 }
 
-func (s *Segment) ReadAt(offset uint64) (*log.Record, error) {
+func (s *Segment) Read(offset uint64) (*common.LogEntry, error) {
 	if offset < s.BaseOffset || offset >= s.NextOffset {
 		return nil, fmt.Errorf("offset %d out of range [%d, %d)", offset, s.BaseOffset, s.NextOffset)
 	}
@@ -118,7 +118,7 @@ func (s *Segment) ReadAt(offset uint64) (*log.Record, error) {
 		return nil, err
 	}
 	for {
-		rec, _, err := log.DecodeRecord(s.logFile)
+		rec, _, err := common.DecodeLogEntry(s.logFile)
 		if err != nil {
 			return nil, err
 		}
@@ -126,6 +126,10 @@ func (s *Segment) ReadAt(offset uint64) (*log.Record, error) {
 			return rec, nil
 		}
 	}
+}
+
+func (s *Segment) ReadAt(buf []byte, offset int64) (int, error) {
+	return s.logFile.Read(buf)
 }
 
 func (s *Segment) Recover() error {
@@ -147,7 +151,7 @@ func (s *Segment) Recover() error {
 	offset := nextOffset
 
 	for {
-		rec, size, err := log.DecodeRecord(s.logFile)
+		rec, size, err := common.DecodeLogEntry(s.logFile)
 		if err != nil {
 			break
 		}
@@ -191,4 +195,20 @@ func (s *Segment) Close() error {
 		return err
 	}
 	return nil
+}
+
+func (s *Segment) Reader() io.Reader {
+	s.logFile.Seek(0, io.SeekStart)
+	return s.logFile
+}
+
+type segmentReader struct {
+	*Segment
+	pos int64
+}
+
+func (sr *segmentReader) Read(p []byte) (n int, err error) {
+	n, err = sr.ReadAt(p, sr.pos)
+	sr.pos += int64(n)
+	return n, err
 }

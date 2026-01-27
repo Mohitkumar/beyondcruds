@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package logapi;
+
+option go_package = "github.com/mohitkumar/mlog/api/consumer";
+
+import "common.proto";
+
+// ConsumerService defines the RPCs for consuming log records.
+service ConsumerService {
+  // Fetch retrieves log entries from a specified topic and partition.
+  rpc Fetch(FetchRequest) returns (FetchResponse);
+
+  // FetchStream streams log entries from a specified topic and partition.
+  rpc FetchStream(FetchRequest) returns (stream FetchResponse);
+}
+
+message FetchRequest {
+  string topic = 1;
+  uint64 offset = 2;
+}
+
+message FetchResponse {
+  common.LogEntry entry = 1;
+}

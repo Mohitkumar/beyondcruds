@@ -33,3 +33,19 @@ message HighWatermarkUpdate {
   string partition_id = 1;
   int64 offset = 2;
 }
+
+message ClusterMetadata {
+  map<string, TopicMetadata> topics = 1;
+}
+
+message TopicMetadata {
+  string name = 1;
+  map<int32, PartitionMetadata> partitions = 2;
+}
+
+message PartitionMetadata {
+  int32 partition_id = 1;
+  string leader_id = 2;
+  uint64 epoch = 3;
+  repeated string isr = 4;
+}

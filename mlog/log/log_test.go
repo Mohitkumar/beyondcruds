@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	l "github.com/mohitkumar/mlog/api/log"
+	"github.com/mohitkumar/mlog/api/logapi"
 )
 
 func setupTestLog(t *testing.T) (*Log, func()) {
@@ -34,7 +34,7 @@ func TestLogAppendRead(t *testing.T) {
 
 	var offsets []uint64
 	for _, r := range records {
-		offset, err := log.Append(&l.Record{
+		offset, err := log.Append(&logapi.Record{
 			Payload: r,
 		})
 
@@ -72,7 +72,7 @@ func TestLogSegmentRotation(t *testing.T) {
 	numRecords := 100000
 	var lastOffset uint64
 	for i := 0; i < numRecords; i++ {
-		offset, err := log.Append(&l.Record{
+		offset, err := log.Append(&logapi.Record{
 			Payload: []byte("log record " + strconv.Itoa(i)),
 		})
 		if err != nil {
@@ -93,4 +93,42 @@ func TestLogSegmentRotation(t *testing.T) {
 	if string(rec.Payload) != expectedValue {
 		t.Errorf("last record payload mismatch: got %s, want %s", rec.Payload, expectedValue)
 	}
+}
+
+func TestLogReader(t *testing.T) {
+	log, teardown := setupTestLog(t)
+	defer teardown()
+
+	records := [][]byte{
+		[]byte("first log record"),
+		[]byte("second log record"),
+		[]byte("third log record"),
+	}
+
+	for _, r := range records {
+		_, err := log.Append(&logapi.Record{
+			Payload: r,
+		})
+		if err != nil {
+			t.Fatalf("failed to append record: %v", err)
+		}
+	}
+
+	reader := log.Reader()
+	buf := make([]byte, 1024)
+	n, err := reader.Read(buf)
+	if err != nil {
+		t.Fatalf("failed to read from log reader: %v", err)
+	}
+
+	readData := buf[:n]
+	for _, r := range records {
+		if !containsRecord(readData, r) {
+			t.Errorf("log reader data missing record: %s", r)
+		}
+	}
+}
+
+func containsRecord(data []byte, record []byte) bool {
+	return string(data) != "" && string(record) != "" && (len(data) >= len(record)) && (string(data[:len(record)]) == string(record) || containsRecord(data[1:], record))
 }

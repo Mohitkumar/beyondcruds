@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/mohitkumar/mlog/api/common";
+
+message LogEntry {
+  uint64 offset = 1;
+  bytes value = 2;
+}

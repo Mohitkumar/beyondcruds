@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package leader;
+
+import "common.proto";
+
+option go_package = "github.com/mohitkumar/mlog/api/leader";
+
+// LeaderService defines the RPCs for leader operations.
+service LeaderService {
+  // CreateTopic creates a new topic.
+  rpc CreateTopic(CreateTopicRequest) returns (CreateTopicResponse);
+  // DeleteTopic deletes a topic.
+  rpc DeleteTopic(DeleteTopicRequest) returns (DeleteTopicResponse);
+  // RecordLEO records the Log End Offset (LEO) of a replica.
+  rpc RecordLEO(RecordLEORequest) returns (RecordLEOResponse);
+
+   // ReplicateStream streams log entries to replicas for replication.
+   rpc ReplicateStream(ReplicateRequest) returns (stream ReplicateResponse);
+
+}
+
+message CreateTopicRequest {
+  string topic = 1;
+  int32 replica_count = 2;
+}
+
+message CreateTopicResponse {
+  string topic = 1;
+}
+
+message DeleteTopicRequest {
+  string topic = 1;
+}
+
+message DeleteTopicResponse {
+  string topic = 1;
+}
+
+message RecordLEORequest {
+  string topic = 1;
+  string replica_id = 2;
+  int64 leo = 3;
+}
+
+message RecordLEOResponse {}
+
+message ReplicateRequest {
+  string topic = 1;
+  uint64 offset= 2;
+}
+
+message ReplicateResponse {
+  uint64 last_offset = 1;
+  common.LogEntry entry = 2;
+}

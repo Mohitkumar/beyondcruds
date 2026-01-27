@@ -1,9 +1,13 @@
 package segment
 
 import (
+	"encoding/binary"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func setupTestSegment(t *testing.T) (*Segment, func()) {
@@ -47,12 +51,12 @@ func TestSegmentReadWrite(t *testing.T) {
 	}
 
 	for i, r := range records {
-		rec, err := segment.ReadAt(offsets[i])
+		rec, err := segment.Read(offsets[i])
 		if err != nil {
 			t.Fatalf("failed to read record: %v", err)
 		}
-		if string(rec.Payload) != string(r) {
-			t.Errorf("record mismatch: got %s, want %s", rec.Payload, r)
+		if string(rec.Value) != string(r) {
+			t.Errorf("record mismatch: got %s, want %s", rec.Value, r)
 		}
 	}
 }
@@ -73,12 +77,12 @@ func TestSegmentReadWriteLarge(t *testing.T) {
 
 	for i := 0; i < numRecords; i++ {
 		expectedValue := []byte("record number " + strconv.Itoa(i))
-		rec, err := segment.ReadAt(uint64(i))
+		rec, err := segment.Read(uint64(i))
 		if err != nil {
 			t.Fatalf("failed to read record %d: %v", i, err)
 		}
-		if string(rec.Payload) != string(expectedValue) {
-			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Payload, expectedValue)
+		if string(rec.Value) != string(expectedValue) {
+			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Value, expectedValue)
 		}
 	}
 }
@@ -88,7 +92,7 @@ func TestSegmentOutOfRangeRead(t *testing.T) {
 	segment, teardown := setupTestSegment(t)
 	defer teardown()
 
-	_, err := segment.ReadAt(0)
+	_, err := segment.Read(0)
 	if err == nil {
 		t.Fatalf("expected error for out-of-range read, got nil")
 	}
@@ -98,7 +102,7 @@ func TestSegmentOutOfRangeRead(t *testing.T) {
 		t.Fatalf("failed to append record: %v", err)
 	}
 
-	_, err = segment.ReadAt(2)
+	_, err = segment.Read(2)
 	if err == nil {
 		t.Fatalf("expected error for out-of-range read, got nil")
 	}
@@ -132,13 +136,13 @@ func TestLoadExistingSegment(t *testing.T) {
 	defer loadedSegment.Close()
 
 	for i, r := range records {
-		rec, err := loadedSegment.ReadAt(uint64(i))
+		rec, err := loadedSegment.Read(uint64(i))
 		if err != nil {
 			t.Fatalf("failed to read record: %v", err)
 		}
-		if string(rec.Payload) != string(r) {
+		if string(rec.Value) != string(r) {
 			t.Errorf("record mismatch: got value: %s), want value: %s)",
-				rec.Payload, r)
+				rec.Value, r)
 		}
 	}
 }
@@ -168,12 +172,53 @@ func TestLoadExistingSegmentLarge(t *testing.T) {
 
 	for i := 0; i < numRecords; i++ {
 		expectedValue := []byte("record number " + strconv.Itoa(i))
-		rec, err := loadedSegment.ReadAt(uint64(i))
+		rec, err := loadedSegment.Read(uint64(i))
 		if err != nil {
 			t.Fatalf("failed to read record %d: %v", i, err)
 		}
-		if string(rec.Payload) != string(expectedValue) {
-			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Payload, expectedValue)
+		if string(rec.Value) != string(expectedValue) {
+			t.Errorf("record %d mismatch: got %s, want %s", i, rec.Value, expectedValue)
+		}
+	}
+}
+
+func TestSegmentReader(t *testing.T) {
+	cleanup(t)
+	segment, teardown := setupTestSegment(t)
+	defer teardown()
+
+	records := [][]byte{
+		[]byte("first record"),
+		[]byte("second record"),
+		[]byte("third record"),
+	}
+
+	for _, r := range records {
+		_, err := segment.Append(r)
+		if err != nil {
+			t.Fatalf("failed to append record: %v", err)
+		}
+	}
+	reader := segment.Reader()
+	var readRecords []string
+	for i := 0; i < len(records); i++ {
+		buf := make([]byte, 4+4)
+		n, err := reader.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 8, n)
+		size := binary.BigEndian.Uint32(buf[4:8])
+
+		payloadBuf := make([]byte, size)
+		n, err = reader.Read(payloadBuf)
+		fmt.Println(string(payloadBuf))
+
+		require.NoError(t, err)
+		require.Equal(t, int(size), n)
+		readRecords = append(readRecords, string(payloadBuf[8:]))
+	}
+	for i, r := range records {
+		if string(r) != readRecords[i] {
+			t.Errorf("record mismatch: got %s, want %s", readRecords[i], r)
 		}
 	}
 }

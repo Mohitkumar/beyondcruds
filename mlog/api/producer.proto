@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package logapi;
+
+option go_package = "github.com/mohitkumar/mlog/api/producer";
+
+// ProducerService defines the RPCs for producing log records.
+service ProducerService {
+    // Produce appends a record to the log and returns the partition and offset.
+  rpc Produce(ProduceRequest) returns (ProduceResponse);
+}
+
+enum AckMode {
+  ACK_NONE = 0;
+  ACK_LEADER = 1;
+  ACK_ALL = 2;
+}
+
+message ProduceRequest {
+  string topic = 1;
+  bytes value = 2;
+  AckMode acks = 3;
+}
+
+message ProduceResponse {
+  uint64 offset = 1;
+}

@@ -2,11 +2,12 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"sync"
 
-	"github.com/mohitkumar/mlog/api/log"
+	"github.com/mohitkumar/mlog/api/common"
 	"github.com/mohitkumar/mlog/segment"
 )
 
@@ -67,10 +68,10 @@ func NewLog(dir string) (*Log, error) {
 	return log, nil
 }
 
-func (l *Log) Append(record *log.Record) (uint64, error) {
+func (l *Log) Append(record *common.LogEntry) (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	off, err := l.activeSegment.Append(record.Payload)
+	off, err := l.activeSegment.Append(record.Value)
 	if err != nil {
 		return 0, err
 	}
@@ -84,7 +85,7 @@ func (l *Log) Append(record *log.Record) (uint64, error) {
 	return off, nil
 }
 
-func (l *Log) Read(offset uint64) (*log.Record, error) {
+func (l *Log) Read(offset uint64) (*common.LogEntry, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	var targetSegment *segment.Segment
@@ -97,14 +98,30 @@ func (l *Log) Read(offset uint64) (*log.Record, error) {
 	if targetSegment == nil || offset < targetSegment.BaseOffset || offset >= targetSegment.NextOffset {
 		return nil, fmt.Errorf("offset %d out of range", offset)
 	}
-	r, err := targetSegment.ReadAt(offset)
+	r, err := targetSegment.Read(offset)
 	if err != nil {
 		return nil, err
 	}
-	return &log.Record{
-		Offset:  r.Offset,
-		Payload: r.Payload,
+	return &common.LogEntry{
+		Offset: r.Offset,
+		Value:  r.Value,
 	}, nil
+}
+
+func (l *Log) LowestOffset() (uint64, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.segments[0].BaseOffset, nil
+}
+
+func (l *Log) HighestOffset() (uint64, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	off := l.segments[len(l.segments)-1].NextOffset
+	if off == 0 {
+		return 0, nil
+	}
+	return off - 1, nil
 }
 
 func (l *Log) Close() error {
@@ -114,6 +131,32 @@ func (l *Log) Close() error {
 		if err := seg.Close(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (l *Log) Reader() io.Reader {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	readers := make([]io.Reader, 0, len(l.segments))
+	for _, seg := range l.segments {
+		r := seg.Reader()
+		readers = append(readers, r)
+	}
+	return io.MultiReader(readers...)
+}
+
+func (l *Log) Delete() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Close file handles first
+	for _, seg := range l.segments {
+		seg.Close()
+	}
+	// Remove the whole directory recursively
+	err := os.RemoveAll(l.Dir)
+	if err != nil {
+		return err
 	}
 	return nil
 }
