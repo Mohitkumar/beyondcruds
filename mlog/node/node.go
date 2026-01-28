@@ -31,6 +31,8 @@ type Node struct {
 	leaderAddr   string
 	leaderClient leader.LeaderServiceClient
 	stopChan     chan struct{}
+	stopOnce     sync.Once
+	cancelFn     context.CancelFunc
 }
 
 // FollowerState tracks the state of a follower/replica
@@ -99,37 +101,61 @@ func (n *Node) StartReplication() error {
 		n.leaderClient = leader.NewLeaderServiceClient(conn)
 	}
 
+	n.mu.Lock()
+	if n.stopChan != nil {
+		n.mu.Unlock()
+		return fmt.Errorf("replication already started for replica %s", n.ReplicaID)
+	}
 	n.stopChan = make(chan struct{})
+	n.mu.Unlock()
+
 	go n.startReplication()
 	return nil
 }
 
 // StopReplication stops the replication process
 func (n *Node) StopReplication() {
-	if n.stopChan != nil {
-		close(n.stopChan)
-	}
+	n.stopOnce.Do(func() {
+		n.mu.Lock()
+		if n.cancelFn != nil {
+			n.cancelFn()
+			n.cancelFn = nil
+		}
+		ch := n.stopChan
+		n.stopChan = nil
+		n.mu.Unlock()
+
+		if ch != nil {
+			close(ch)
+		}
+	})
 }
 
 // startReplication is the main replication loop for replica nodes
 func (n *Node) startReplication() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	n.mu.Lock()
+	n.cancelFn = cancel
+	stopCh := n.stopChan
+	n.mu.Unlock()
+
 	reconnectDelay := time.Second
 
 	for {
 		select {
-		case <-n.stopChan:
+		case <-stopCh:
 			return
 		default:
 		}
 
-		// Get current LEO (Log End Offset) - start replicating from here
+		// Start replicating from current LEO (next offset to apply).
 		currentOffset := n.Log.LEO()
 
 		// Create replication request
 		req := &leader.ReplicateRequest{
-			Topic:  n.Topic,
-			Offset: currentOffset,
+			Topic:     n.Topic,
+			Offset:    currentOffset,
+			BatchSize: 1000,
 		}
 
 		// Create stream to leader
@@ -147,7 +173,7 @@ func (n *Node) startReplication() {
 		// Process streamed log entries
 		for {
 			select {
-			case <-n.stopChan:
+			case <-stopCh:
 				return
 			default:
 			}
@@ -158,24 +184,48 @@ func (n *Node) startReplication() {
 				break // Break inner loop to reconnect
 			}
 
-			if resp.Entry == nil {
+			if len(resp.Entries) == 0 {
 				continue
 			}
 
-			// Apply log entry to local log
-			entry := resp.Entry
-			_, err = n.Log.Append(&common.LogEntry{
-				Offset: entry.Offset,
-				Value:  entry.Value,
-			})
-			if err != nil {
-				fmt.Printf("replica %s: failed to append log entry at offset %d: %v", n.ReplicaID, entry.Offset, err)
-				continue
+			expectedOffset := n.Log.LEO()
+			var appliedAny bool
+			var maxApplied uint64
+
+			for _, entry := range resp.Entries {
+				// Drop duplicates/old entries.
+				if entry.Offset < expectedOffset {
+					continue
+				}
+				// Enforce contiguous apply to avoid gaps.
+				if entry.Offset != expectedOffset {
+					// Gap detected; reconnect starting from our current LEO.
+					break
+				}
+
+				off, appendErr := n.Log.Append(&common.LogEntry{Value: entry.Value})
+				if appendErr != nil {
+					fmt.Printf("replica %s: failed to append log entry at expected offset %d: %v", n.ReplicaID, expectedOffset, appendErr)
+					// Stop processing this batch; reconnect and retry.
+					break
+				}
+				// Defensive check: LogManager.Append should return the offset it wrote.
+				if off != expectedOffset {
+					fmt.Printf("replica %s: append returned offset %d, expected %d; reconnecting", n.ReplicaID, off, expectedOffset)
+					break
+				}
+
+				appliedAny = true
+				maxApplied = off
+				expectedOffset++
 			}
 
-			// Update LEO after successful append
-			n.Log.SetLEO(entry.Offset + 1)
-			currentLEO := n.Log.LEO()
+			if !appliedAny {
+				// Nothing applied; reconnect to resync.
+				break
+			}
+
+			currentLEO := maxApplied + 1
 
 			// Report LEO to leader
 			err = n.reportLEO(ctx, currentLEO)

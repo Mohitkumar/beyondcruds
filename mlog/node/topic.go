@@ -329,7 +329,11 @@ func (t *Topic) HandleProduce(ctx context.Context, logEntry *common.LogEntry, ac
 	return offset, nil
 }
 
-// waitForAllFollowersToCatchUp waits for all ISR followers to catch up to the given offset
+// waitForAllFollowersToCatchUp waits for all required followers to catch up to the given offset.
+// Semantics:
+//   - If there are ISR followers, we wait on ISR only.
+//   - If there are followers but no ISR yet, we wait on all followers (bootstrap case).
+//   - If there are no followers at all, we return immediately (ACK_ALL == ACK_LEADER).
 func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64) error {
 	timeout := time.After(5 * time.Second)
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -341,19 +345,38 @@ func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64)
 
 	for {
 		allCaughtUp := true
+		candidates := 0
+
 		t.leader.mu.RLock()
-		for _, follower := range t.leader.followers {
-			if follower.IsISR {
-				if follower.LastFetchedOffset < requiredLEO {
-					allCaughtUp = false
-					break
-				}
+		// Decide whether to use ISR-only or all followers.
+		useISR := false
+		for _, f := range t.leader.followers {
+			if f.IsISR {
+				useISR = true
+				break
 			}
 		}
+
+		for _, follower := range t.leader.followers {
+			if useISR && !follower.IsISR {
+				continue
+			}
+			candidates++
+			if follower.LastFetchedOffset < requiredLEO {
+				allCaughtUp = false
+				break
+			}
+		}
+
 		t.leader.mu.RUnlock()
 
+		// No followers to wait on: nothing to do.
+		if candidates == 0 {
+			return nil
+		}
+
 		if allCaughtUp {
-			break
+			return nil
 		}
 
 		select {
@@ -365,7 +388,6 @@ func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64)
 			return fmt.Errorf("timeout before all followers caught up")
 		}
 	}
-	return nil
 }
 
 // maybeAdvanceHW advances the high watermark based on follower states

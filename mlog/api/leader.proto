@@ -48,9 +48,10 @@ message RecordLEOResponse {}
 message ReplicateRequest {
   string topic = 1;
   uint64 offset= 2;
+  uint64 batch_size= 3;
 }
 
 message ReplicateResponse {
   uint64 last_offset = 1;
-  common.LogEntry entry = 2;
+  repeated common.LogEntry entries = 2;
 }

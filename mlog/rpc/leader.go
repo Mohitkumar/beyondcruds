@@ -2,9 +2,9 @@ package rpc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/mohitkumar/mlog/api/common"
 	"github.com/mohitkumar/mlog/api/leader"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -78,9 +78,14 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 		return status.Errorf(codes.NotFound, "topic not found: %v", err)
 	}
 
+	batchSize := req.BatchSize
+	if batchSize == 0 {
+		batchSize = 1000
+	}
+
 	// Start reading from the requested offset
 	currentOffset := req.Offset
-	ticker := time.NewTicker(100 * time.Millisecond) // Poll for new entries
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	ctx := stream.Context()
@@ -90,36 +95,36 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// Try to read the next entry (use ReadUncommitted for replication)
-			entry, err := leaderNode.Log.ReadUncommitted(currentOffset)
-			if err != nil {
-				// If offset is out of range, wait for new entries
-				if err.Error() == fmt.Sprintf("offset %d out of range", currentOffset) {
-					// Check if we've reached the end
-					highestOffset := leaderNode.Log.HighestOffset()
-					if currentOffset >= highestOffset {
-						// No new entries, continue waiting
-						continue
-					}
-					// Otherwise, there might be a gap, skip to next available
-					currentOffset++
-					continue
-				}
-				// Other errors, log and continue
+			// LEO is the next offset to write; readable offsets are [0, LEO).
+			endExclusive := leaderNode.Log.LEO()
+			if currentOffset >= endExclusive {
 				continue
 			}
 
-			// Send the entry
-			resp := &leader.ReplicateResponse{
-				LastOffset: entry.Offset,
-				Entry:      entry,
+			entries := make([]*common.LogEntry, 0, batchSize)
+			for i := 0; i < int(batchSize); i++ {
+				// Refresh endExclusive occasionally so long batches don't lag behind.
+				endExclusive = leaderNode.Log.LEO()
+				if currentOffset >= endExclusive {
+					break
+				}
+				entry, err := leaderNode.Log.ReadUncommitted(currentOffset)
+				if err != nil {
+					// If we can't read this offset yet, stop this batch and retry next tick.
+					break
+				}
+				entries = append(entries, entry)
+				currentOffset++
 			}
-
-			if err := stream.Send(resp); err != nil {
-				return status.Errorf(codes.Internal, "failed to send entry: %v", err)
+			if len(entries) > 0 {
+				resp := &leader.ReplicateResponse{
+					LastOffset: currentOffset - 1,
+					Entries:    entries,
+				}
+				if err := stream.Send(resp); err != nil {
+					return status.Errorf(codes.Internal, "failed to send entries: %v", err)
+				}
 			}
-
-			currentOffset = entry.Offset + 1
 		}
 	}
 }
