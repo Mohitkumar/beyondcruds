@@ -315,9 +315,6 @@ func (t *Topic) HandleProduce(ctx context.Context, logEntry *common.LogEntry, ac
 		return 0, err
 	}
 
-	t.leader.mu.Lock()
-	defer t.leader.mu.Unlock()
-
 	switch acks {
 	case producer.AckMode_ACK_LEADER:
 		return offset, nil
@@ -338,12 +335,16 @@ func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64)
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
+	// Followers report LEO (next offset to write). If we append at offset N,
+	// a follower has fully replicated it once its reported LEO is at least N+1.
+	requiredLEO := offset + 1
+
 	for {
 		allCaughtUp := true
 		t.leader.mu.RLock()
 		for _, follower := range t.leader.followers {
 			if follower.IsISR {
-				if follower.LastFetchedOffset < offset {
+				if follower.LastFetchedOffset < requiredLEO {
 					allCaughtUp = false
 					break
 				}
@@ -392,22 +393,23 @@ func (t *Topic) RecordLEORemote(replicaID string, leo uint64, leoTime time.Time)
 		return fmt.Errorf("topic %s has no leader", t.Name)
 	}
 
+	// Update follower state under the leader lock.
 	t.leader.mu.Lock()
-	defer t.leader.mu.Unlock()
-
 	if follower, ok := t.leader.followers[replicaID]; ok {
 		follower.LastFetchedOffset = leo
 		follower.LastFetchTime = leoTime
-		// Mark as ISR if caught up (simple heuristic: within 100 offsets)
-		if leo >= t.leader.Log.LEO()-100 {
+		if t.leader.Log.LEO() >= 100 && leo >= t.leader.Log.LEO()-100 {
 			follower.IsISR = true
+		} else if t.leader.Log.LEO() < 100 {
+			// Small logs: treat replicas as ISR if they are at/near the end.
+			if leo >= t.leader.Log.LEO() {
+				follower.IsISR = true
+			}
 		}
 	}
-
-	// Try to advance HW after recording LEO
 	t.leader.mu.Unlock()
-	t.maybeAdvanceHW()
-	t.leader.mu.Lock()
 
+	// Advance HW without holding leader.mu (maybeAdvanceHW locks internally).
+	t.maybeAdvanceHW()
 	return nil
 }
