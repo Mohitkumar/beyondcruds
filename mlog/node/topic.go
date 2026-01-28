@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -288,6 +289,17 @@ func (tm *TopicManager) DeleteReplicaRemote(topic string, replicaID string) erro
 	}
 
 	delete(topicObj.replicas, replicaID)
+
+	// If this topic has no leader and no more replicas, delete the topic entry and its directory
+	if topicObj.leader == nil && len(topicObj.replicas) == 0 {
+		// Delete the parent topic directory if it exists
+		topicDir := filepath.Join(tm.BaseDir, topic)
+		if err := os.RemoveAll(topicDir); err != nil {
+			return fmt.Errorf("failed to remove topic directory: %w", err)
+		}
+		delete(tm.topics, topic)
+	}
+
 	return nil
 }
 
@@ -297,6 +309,7 @@ func (t *Topic) HandleProduce(ctx context.Context, logEntry *common.LogEntry, ac
 		return 0, fmt.Errorf("topic %s has no leader", t.Name)
 	}
 
+	// Use LogManager.Append which automatically updates LEO
 	offset, err := t.leader.Log.Append(logEntry)
 	if err != nil {
 		return 0, err
@@ -354,32 +367,6 @@ func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64)
 	return nil
 }
 
-// HandleFetch handles fetch requests from followers (leader only)
-func (t *Topic) HandleFetch(followerID string, offset uint64) ([]*common.LogEntry, uint64, error) {
-	if t.leader == nil {
-		return nil, 0, fmt.Errorf("topic %s has no leader", t.Name)
-	}
-
-	t.leader.mu.Lock()
-	// Track follower progress
-	if _, ok := t.leader.followers[followerID]; !ok {
-		t.leader.followers[followerID] = &FollowerState{}
-	}
-	t.leader.followers[followerID].LastFetchedOffset = offset
-	t.leader.followers[followerID].LastFetchTime = time.Now()
-	t.leader.mu.Unlock()
-
-	// Try to advance High Watermark based on new follower info
-	t.maybeAdvanceHW()
-
-	// Return messages and current HW
-	entry, err := t.leader.Log.Read(offset)
-	if err != nil {
-		return nil, 0, err
-	}
-	return []*common.LogEntry{entry}, t.leader.Log.HighWatermark(), nil
-}
-
 // maybeAdvanceHW advances the high watermark based on follower states
 func (t *Topic) maybeAdvanceHW() {
 	if t.leader == nil {
@@ -397,11 +384,6 @@ func (t *Topic) maybeAdvanceHW() {
 		}
 	}
 	t.leader.Log.SetHighWatermark(minOffset)
-}
-
-// MaybeAdvanceHW is a public wrapper for maybeAdvanceHW
-func (t *Topic) MaybeAdvanceHW() {
-	t.maybeAdvanceHW()
 }
 
 // RecordLEORemote records the LEO of a replica (leader only)

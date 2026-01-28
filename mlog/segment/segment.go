@@ -173,6 +173,7 @@ func (s *Segment) Recover() error {
 	s.index.TruncateAfter(uint64(pos))
 
 	s.NextOffset = offset
+	s.MaxOffset = offset - 1
 	return nil
 }
 

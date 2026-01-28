@@ -54,14 +54,9 @@ func (c *ConsumerManager) GetOffset(id string, topic string) (uint64, error) {
 func (c *ConsumerManager) Recover() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	offset, err := c.offsetLog.LowestOffset()
-	if err != nil {
-		return err
-	}
-	highestOffset, err := c.offsetLog.HighestOffset()
-	if err != nil {
-		return err
-	}
+	offset := c.offsetLog.LowestOffset()
+
+	highestOffset := c.offsetLog.HighestOffset()
 	for ; offset < highestOffset; offset++ {
 		data, err := c.offsetLog.ReadRaw(offset)
 		if err != nil {

@@ -145,20 +145,19 @@ func (l *Log) Read(offset uint64) (*common.LogEntry, error) {
 	}, nil
 }
 
-func (l *Log) LowestOffset() (uint64, error) {
+func (l *Log) LowestOffset() uint64 {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return l.segments[0].BaseOffset, nil
+	return l.segments[0].BaseOffset
 }
 
-func (l *Log) HighestOffset() (uint64, error) {
+func (l *Log) HighestOffset() uint64 {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	off := l.segments[len(l.segments)-1].NextOffset
-	if off == 0 {
-		return 0, nil
+	if l.activeSegment == nil {
+		return 0
 	}
-	return off - 1, nil
+	return l.activeSegment.MaxOffset
 }
 
 func (l *Log) Close() error {

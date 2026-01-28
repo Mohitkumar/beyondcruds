@@ -90,14 +90,14 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// Try to read the next entry
-			entry, err := leaderNode.Log.Read(currentOffset)
+			// Try to read the next entry (use ReadUncommitted for replication)
+			entry, err := leaderNode.Log.ReadUncommitted(currentOffset)
 			if err != nil {
 				// If offset is out of range, wait for new entries
 				if err.Error() == fmt.Sprintf("offset %d out of range", currentOffset) {
 					// Check if we've reached the end
-					highestOffset, err := leaderNode.Log.HighestOffset()
-					if err == nil && currentOffset >= highestOffset {
+					highestOffset := leaderNode.Log.HighestOffset()
+					if currentOffset >= highestOffset {
 						// No new entries, continue waiting
 						continue
 					}
