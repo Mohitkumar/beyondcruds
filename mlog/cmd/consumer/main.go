@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func main() {
 		Use:   "consumer",
 		Short: "Consume messages from a topic (streaming)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			conn, err := grpc.Dial(addr, grpc.WithInsecure())
+			conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				return err
 			}

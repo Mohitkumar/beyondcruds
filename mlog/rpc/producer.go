@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mohitkumar/mlog/api/common"
 	"github.com/mohitkumar/mlog/api/producer"
@@ -10,11 +11,12 @@ import (
 var _ producer.ProducerServiceServer = (*grpcServer)(nil)
 
 func (srv *grpcServer) Produce(ctx context.Context, req *producer.ProduceRequest) (*producer.ProduceResponse, error) {
-	leader, err := srv.topicManager.GetLeader(req.Topic)
+	topicObj, err := srv.topicManager.GetTopic(req.Topic)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("topic %s not found: %w", req.Topic, err)
 	}
-	offset, err := leader.HandleProduce(ctx, &common.LogEntry{
+
+	offset, err := topicObj.HandleProduce(ctx, &common.LogEntry{
 		Value: req.Value,
 	}, req.Acks)
 	if err != nil {

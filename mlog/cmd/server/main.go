@@ -30,12 +30,8 @@ func main() {
 				return fmt.Errorf("listen %s: %w", addr, err)
 			}
 
-			// Broker objects are used both for dialing peers and as metadata.
-			// Using NewBroker here will dial addr (self); OK for now.
-			selfBroker, err := broker.NewBroker(nodeID, addr)
-			if err != nil {
-				return fmt.Errorf("create self broker: %w", err)
-			}
+			// Create self broker (connection will be established lazily when needed)
+			selfBroker := broker.NewBroker(nodeID, addr)
 
 			bm := broker.NewBrokerManager()
 			bm.AddBroker(selfBroker)
@@ -47,10 +43,7 @@ func main() {
 				if n != 2 {
 					continue
 				}
-				b, err := broker.NewBroker(peerNode, peerAddr)
-				if err != nil {
-					return fmt.Errorf("add peer %s: %w", p, err)
-				}
+				b := broker.NewBroker(peerNode, peerAddr)
 				bm.AddBroker(b)
 			}
 

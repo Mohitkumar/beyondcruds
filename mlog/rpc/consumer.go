@@ -30,12 +30,12 @@ func (s *grpcServer) Fetch(ctx context.Context, req *consumer.FetchRequest) (*co
 		}
 	}
 
-	leader, err := s.topicManager.GetLeader(req.Topic)
+	leaderNode, err := s.topicManager.GetLeader(req.Topic)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "topic %s not found: %v", req.Topic, err)
 	}
 
-	entry, err := leader.Log.Read(off)
+	entry, err := leaderNode.Log.Read(off)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read offset %d: %v", off, err)
 	}
@@ -54,7 +54,7 @@ func (s *grpcServer) FetchStream(req *consumer.FetchRequest, stream consumer.Con
 		id = "default"
 	}
 
-	leader, err := s.topicManager.GetLeader(req.Topic)
+	leaderNode, err := s.topicManager.GetLeader(req.Topic)
 	if err != nil {
 		return status.Errorf(codes.NotFound, "topic %s not found: %v", req.Topic, err)
 	}
@@ -77,7 +77,7 @@ func (s *grpcServer) FetchStream(req *consumer.FetchRequest, stream consumer.Con
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			entry, err := leader.Log.Read(off)
+			entry, err := leaderNode.Log.Read(off)
 			if err != nil {
 				// likely out of range; wait for more data
 				continue

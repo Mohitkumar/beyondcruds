@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/mohitkumar/mlog/api/logapi"
+	"github.com/mohitkumar/mlog/api/common"
 )
 
 func setupTestLog(t *testing.T) (*Log, func()) {
@@ -34,8 +34,8 @@ func TestLogAppendRead(t *testing.T) {
 
 	var offsets []uint64
 	for _, r := range records {
-		offset, err := log.Append(&logapi.Record{
-			Payload: r,
+		offset, err := log.Append(&common.LogEntry{
+			Value: r,
 		})
 
 		if err != nil {
@@ -49,9 +49,9 @@ func TestLogAppendRead(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to read record: %v", err)
 		}
-		if string(rec.Payload) != string(r) {
+		if string(rec.Value) != string(r) {
 			t.Errorf("record mismatch: got (payload: %s), want (payload: %s)",
-				rec.Payload, r)
+				rec.Value, r)
 		}
 	}
 }
@@ -72,8 +72,8 @@ func TestLogSegmentRotation(t *testing.T) {
 	numRecords := 100000
 	var lastOffset uint64
 	for i := 0; i < numRecords; i++ {
-		offset, err := log.Append(&logapi.Record{
-			Payload: []byte("log record " + strconv.Itoa(i)),
+		offset, err := log.Append(&common.LogEntry{
+			Value: []byte("log record " + strconv.Itoa(i)),
 		})
 		if err != nil {
 			t.Fatalf("failed to append record: %v", err)
@@ -90,8 +90,8 @@ func TestLogSegmentRotation(t *testing.T) {
 		t.Fatalf("failed to read last record: %v", err)
 	}
 	expectedValue := "log record " + strconv.Itoa(numRecords-1)
-	if string(rec.Payload) != expectedValue {
-		t.Errorf("last record payload mismatch: got %s, want %s", rec.Payload, expectedValue)
+	if string(rec.Value) != expectedValue {
+		t.Errorf("last record payload mismatch: got %s, want %s", rec.Value, expectedValue)
 	}
 }
 
@@ -106,8 +106,8 @@ func TestLogReader(t *testing.T) {
 	}
 
 	for _, r := range records {
-		_, err := log.Append(&logapi.Record{
-			Payload: r,
+		_, err := log.Append(&common.LogEntry{
+			Value: r,
 		})
 		if err != nil {
 			t.Fatalf("failed to append record: %v", err)

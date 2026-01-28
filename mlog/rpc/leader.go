@@ -53,12 +53,12 @@ func (s *grpcServer) RecordLEO(ctx context.Context, req *leader.RecordLEORequest
 		return nil, status.Error(codes.InvalidArgument, "replica_id is required")
 	}
 
-	topicLeader, err := s.topicManager.GetLeader(req.Topic)
+	topicObj, err := s.topicManager.GetTopic(req.Topic)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "topic %s not found: %v", req.Topic, err)
 	}
 
-	err = topicLeader.RecordLEORemote(req.ReplicaId, uint64(req.Leo), time.Now())
+	err = topicObj.RecordLEORemote(req.ReplicaId, uint64(req.Leo), time.Now())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to record LEO for replica %s in topic %s: %v", req.ReplicaId, req.Topic, err)
 	}
@@ -73,7 +73,7 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 	}
 
 	// Get the leader for this topic
-	topicLeader, err := s.topicManager.GetLeader(req.Topic)
+	leaderNode, err := s.topicManager.GetLeader(req.Topic)
 	if err != nil {
 		return status.Errorf(codes.NotFound, "topic not found: %v", err)
 	}
@@ -91,12 +91,12 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 			return ctx.Err()
 		case <-ticker.C:
 			// Try to read the next entry
-			entry, err := topicLeader.Log.Read(currentOffset)
+			entry, err := leaderNode.Log.Read(currentOffset)
 			if err != nil {
 				// If offset is out of range, wait for new entries
 				if err.Error() == fmt.Sprintf("offset %d out of range", currentOffset) {
 					// Check if we've reached the end
-					highestOffset, err := topicLeader.Log.HighestOffset()
+					highestOffset, err := leaderNode.Log.HighestOffset()
 					if err == nil && currentOffset >= highestOffset {
 						// No new entries, continue waiting
 						continue
