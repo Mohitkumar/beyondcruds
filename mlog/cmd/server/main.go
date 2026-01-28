@@ -7,7 +7,7 @@ import (
 
 	"github.com/mohitkumar/mlog/broker"
 	"github.com/mohitkumar/mlog/consumer"
-	"github.com/mohitkumar/mlog/replication"
+	"github.com/mohitkumar/mlog/node"
 	"github.com/mohitkumar/mlog/rpc"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -47,7 +47,7 @@ func main() {
 				bm.AddBroker(b)
 			}
 
-			topicMgr, err := replication.NewTopicManager(dataDir, bm, selfBroker)
+			topicMgr, err := node.NewTopicManager(dataDir, bm, selfBroker)
 			if err != nil {
 				return fmt.Errorf("create topic manager: %w", err)
 			}

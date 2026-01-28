@@ -1,4 +1,4 @@
-package replication
+package node
 
 import (
 	"os"
@@ -101,8 +101,4 @@ func TestTopicManager_DeleteTopic(t *testing.T) {
 	if _, err := os.Stat(logDir); !os.IsNotExist(err) {
 		t.Fatalf("expected log dir %s to be removed, got err = %v", logDir, err)
 	}
-}
-
-func TestRepilcation(t *testing.T) {
-
 }

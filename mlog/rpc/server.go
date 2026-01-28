@@ -11,7 +11,7 @@ import (
 	"github.com/mohitkumar/mlog/api/producer"
 	"github.com/mohitkumar/mlog/api/replication"
 	consumermgr "github.com/mohitkumar/mlog/consumer"
-	replicationmgr "github.com/mohitkumar/mlog/replication"
+	"github.com/mohitkumar/mlog/node"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -22,11 +22,11 @@ type grpcServer struct {
 	leader.UnimplementedLeaderServiceServer
 	replication.UnimplementedReplicationServiceServer
 	producer.UnimplementedProducerServiceServer
-	topicManager    *replicationmgr.TopicManager
+	topicManager    *node.TopicManager
 	consumerManager *consumermgr.ConsumerManager
 }
 
-func NewGrpcServer(topicManager *replicationmgr.TopicManager, consumerManager *consumermgr.ConsumerManager) (*grpc.Server, error) {
+func NewGrpcServer(topicManager *node.TopicManager, consumerManager *consumermgr.ConsumerManager) (*grpc.Server, error) {
 	logger := zap.L().Named("server")
 	zapOpts := []grpc_zap.Option{
 		grpc_zap.WithDurationField(

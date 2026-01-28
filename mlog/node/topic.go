@@ -1,4 +1,4 @@
-package replication
+package node
 
 import (
 	"context"
@@ -128,13 +128,13 @@ func (tm *TopicManager) CreateTopic(topic string, replicaCount int) error {
 		// Note: The actual replica log is on the remote broker, this is just metadata
 		replicaNode := &Node{
 			Topic:         topic,
-			Log:            nil, // Replica log is on remote broker
-			broker:         replicaBroker,
-			NodeID:         replicaBroker.NodeID,
-			ReplicaID:      replicaID,
-			IsLeader:       false,
-			leaderAddr:     tm.currentBroker.Addr,
-			brokerManager:  tm.brokerManager,
+			Log:           nil, // Replica log is on remote broker
+			broker:        replicaBroker,
+			NodeID:        replicaBroker.NodeID,
+			ReplicaID:     replicaID,
+			IsLeader:      false,
+			leaderAddr:    tm.currentBroker.Addr,
+			brokerManager: tm.brokerManager,
 		}
 		topicObj.replicas[replicaID] = replicaNode
 	}
