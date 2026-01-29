@@ -32,7 +32,6 @@ type Segment struct {
 
 func NewSegment(baseOffset uint64, dir string) (*Segment, error) {
 	logFilePath := dir + "/" + formatLogFileName(baseOffset)
-	// Do NOT use O_APPEND; we manage write offsets ourselves for speed.
 	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err

@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/mohitkumar/mlog/api/leader"
 	"github.com/mohitkumar/mlog/api/producer"
 	"github.com/mohitkumar/mlog/api/replication"
-	"github.com/mohitkumar/mlog/log"
 	"github.com/mohitkumar/mlog/testutil"
 )
 
@@ -311,15 +309,13 @@ func TestReplication_VerifyMessages(t *testing.T) {
 		lastOffset = resp.Offset
 	}
 
-	// Wait for replication to catch up
-	time.Sleep(2 * time.Second)
-
-	// Verify messages on leader
-	leaderLogMgr, err := log.NewLogManager(filepath.Join(leaderSrv.BaseDir, topicName))
+	// Verify messages on leader - use the existing LogManager from the leader node
+	// instead of creating a new one from disk (which won't have buffered writes flushed)
+	leaderNode, err := leaderSrv.TopicManager.GetLeader(topicName)
 	if err != nil {
-		t.Fatalf("failed to create leader log manager: %v", err)
+		t.Fatalf("failed to get leader node: %v", err)
 	}
-	defer leaderLogMgr.Close()
+	leaderLogMgr := leaderNode.Log // Use the existing LogManager instance
 
 	for i, expectedMsg := range messages {
 		entry, err := leaderLogMgr.ReadUncommitted(uint64(i))
@@ -334,12 +330,15 @@ func TestReplication_VerifyMessages(t *testing.T) {
 		}
 	}
 
-	// Verify messages on follower replica
-	replicaLogMgr, err := log.NewLogManager(filepath.Join(followerSrv.BaseDir, topicName, "replica-0"))
+	// Wait for replication to catch up
+	time.Sleep(2 * time.Second)
+	// Verify messages on follower replica - use the existing LogManager from the replica node
+	// instead of creating a new one from disk (which won't have buffered writes flushed)
+	replicaNode, err := followerSrv.TopicManager.GetReplica(topicName, "replica-0")
 	if err != nil {
-		t.Fatalf("failed to create replica log manager: %v", err)
+		t.Fatalf("failed to get replica node: %v", err)
 	}
-	defer replicaLogMgr.Close()
+	replicaLogMgr := replicaNode.Log // Use the existing LogManager instance
 
 	for i, expectedMsg := range messages {
 		entry, err := replicaLogMgr.ReadUncommitted(uint64(i))
@@ -443,11 +442,12 @@ func TestReplication_WithAckAll(t *testing.T) {
 	}
 
 	// Verify message is immediately available on replica (ACK_ALL guarantees this)
-	replicaLogMgr, err := log.NewLogManager(filepath.Join(followerSrv.BaseDir, topicName, "replica-0"))
+	// Use the existing LogManager from the replica node instead of creating a new one from disk
+	replicaNode, err := followerSrv.TopicManager.GetReplica(topicName, "replica-0")
 	if err != nil {
-		t.Fatalf("failed to create replica log manager: %v", err)
+		t.Fatalf("failed to get replica node: %v", err)
 	}
-	defer replicaLogMgr.Close()
+	replicaLogMgr := replicaNode.Log // Use the existing LogManager instance
 
 	// Message should be available immediately after ACK_ALL returns
 	entry, err := replicaLogMgr.ReadUncommitted(0)
@@ -546,11 +546,12 @@ func TestReplication_CatchUpTime_10000Messages(t *testing.T) {
 		t.Fatalf("expected last offset %d, got %d (base=%d)", expectedLastOffset, lastOffset, baseOffset)
 	}
 
-	replicaLogMgr, err := log.NewLogManager(filepath.Join(followerSrv.BaseDir, topicName, "replica-0"))
+	// Use the existing LogManager from the replica node instead of creating a new one from disk
+	replicaNode, err := followerSrv.TopicManager.GetReplica(topicName, "replica-0")
 	if err != nil {
-		t.Fatalf("failed to create replica log manager: %v", err)
+		t.Fatalf("failed to get replica node: %v", err)
 	}
-	defer replicaLogMgr.Close()
+	replicaLogMgr := replicaNode.Log // Use the existing LogManager instance
 
 	// Measure how long it takes for replica to catch up to lastOffset.
 	catchUpStart := time.Now()
@@ -773,18 +774,18 @@ func BenchmarkReplication_VerifyReplication(b *testing.B) {
 
 	producerClient := producer.NewProducerServiceClient(leaderConn)
 
-	// Pre-create log managers for verification
-	leaderLogMgr, err := log.NewLogManager(filepath.Join(leaderSrv.BaseDir, topicName))
+	// Get existing log managers from nodes for verification (not from disk)
+	leaderNode, err := leaderSrv.TopicManager.GetLeader(topicName)
 	if err != nil {
-		b.Fatalf("failed to create leader log manager: %v", err)
+		b.Fatalf("failed to get leader node: %v", err)
 	}
-	defer leaderLogMgr.Close()
+	leaderLogMgr := leaderNode.Log // Use the existing LogManager instance
 
-	replicaLogMgr, err := log.NewLogManager(filepath.Join(followerSrv.BaseDir, topicName, "replica-0"))
+	replicaNode, err := followerSrv.TopicManager.GetReplica(topicName, "replica-0")
 	if err != nil {
-		b.Fatalf("failed to create replica log manager: %v", err)
+		b.Fatalf("failed to get replica node: %v", err)
 	}
-	defer replicaLogMgr.Close()
+	replicaLogMgr := replicaNode.Log // Use the existing LogManager instance
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

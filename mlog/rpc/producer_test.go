@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/mohitkumar/mlog/api/producer"
@@ -89,6 +90,67 @@ func TestProduce_WithAckLeader(t *testing.T) {
 	}
 	if resp.Offset != 0 {
 		t.Fatalf("expected offset 0, got %d", resp.Offset)
+	}
+}
+
+func TestProduce_Verify(t *testing.T) {
+	ts := testutil.SetupTestServerWithTopic(t, "node-1", "producer-test", "test-topic", 0, NewGrpcServer)
+	defer ts.Cleanup()
+
+	ctx := context.Background()
+	conn, err := ts.GetConn()
+	if err != nil {
+		t.Fatalf("GetConn: %v", err)
+	}
+	defer conn.Close()
+
+	client := producer.NewProducerServiceClient(conn)
+	for i := 0; i < 100; i++ {
+		resp, err := client.Produce(ctx, &producer.ProduceRequest{
+			Topic: "test-topic",
+			Value: []byte(fmt.Sprintf("message-%d", i)),
+			Acks:  producer.AckMode_ACK_LEADER,
+		})
+		if err != nil {
+			t.Fatalf("Produce: %v", err)
+		}
+		if resp.Offset != uint64(i) {
+			t.Fatalf("expected offset %d, got %d", i, resp.Offset)
+		}
+	}
+
+}
+
+func TestProduceBatch_Verify(t *testing.T) {
+	ts := testutil.SetupTestServerWithTopic(t, "node-1", "producer-test", "test-topic", 0, NewGrpcServer)
+	defer ts.Cleanup()
+
+	ctx := context.Background()
+	conn, err := ts.GetConn()
+	if err != nil {
+		t.Fatalf("GetConn: %v", err)
+	}
+	defer conn.Close()
+
+	client := producer.NewProducerServiceClient(conn)
+	messages := make([][]byte, 0)
+	for i := 0; i < 100; i++ {
+		messages = append(messages, []byte(fmt.Sprintf("message-%d", i)))
+	}
+	resp, err := client.ProduceBatch(ctx, &producer.ProduceBatchRequest{
+		Topic:  "test-topic",
+		Values: messages,
+		Acks:   producer.AckMode_ACK_LEADER,
+	})
+	if err != nil {
+		t.Fatalf("Produce: %v", err)
+	}
+
+	if resp.BaseOffset != 0 {
+		t.Fatalf("expected base offset 0 got %d", resp.BaseOffset)
+	}
+	if resp.LastOffset != 99 {
+		t.Fatalf("expected base offset 0 got %d", resp.LastOffset)
 	}
 }
 
