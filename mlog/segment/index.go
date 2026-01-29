@@ -56,11 +56,30 @@ func OpenIndex(filePath string) (*Index, error) {
 		return nil, err
 	}
 
-	return &Index{
+	idx := &Index{
 		file: file,
 		mmap: m,
-		size: stat.Size(),
-	}, nil
+		size: 0,
+	}
+
+	// Determine how many entries are actually written.
+	// We scan until we hit an empty (0,0) entry. The only legitimate (0,0) entry is the very first
+	// index entry (base offset at log position 0), so we ignore i==0.
+	var used int64
+	capBytes := int64(len(idx.mmap))
+	for pos := int64(0); pos+IndexEntrySize <= capBytes; pos += IndexEntrySize {
+		buf := idx.mmap[pos : pos+IndexEntrySize]
+		rel := indexEndian.Uint32(buf[0:4])
+		p := indexEndian.Uint64(buf[4:12])
+
+		if pos > 0 && rel == 0 && p == 0 {
+			break
+		}
+		used += IndexEntrySize
+	}
+	idx.size = used
+
+	return idx, nil
 }
 
 func (idx *Index) Write(relOffset uint32, position uint64) error {

@@ -23,11 +23,13 @@ type Segment struct {
 	logFile             *os.File
 	index               *Index
 	bytesSinceLastIndex uint64
+	writePos            int64 // current end-of-log position
 }
 
 func NewSegment(baseOffset uint64, dir string) (*Segment, error) {
 	logFilePath := dir + "/" + formatLogFileName(baseOffset)
-	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	// Do NOT use O_APPEND; we manage write offsets ourselves for speed.
+	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +44,7 @@ func NewSegment(baseOffset uint64, dir string) (*Segment, error) {
 		NextOffset: baseOffset,
 		logFile:    logFile,
 		index:      index,
+		writePos:   0,
 	}, nil
 }
 
@@ -80,16 +83,18 @@ func formatIndexFileName(baseOffset uint64) string {
 }
 
 func (s *Segment) Append(value []byte) (uint64, error) {
-	pos, err := s.logFile.Seek(0, io.SeekEnd)
-	if err != nil {
-		return 0, err
-	}
 	offset := s.NextOffset
 	record := common.NewLogEntry(offset, value)
+	// Write at the current end position and advance it locally.
+	if _, err := s.logFile.Seek(s.writePos, io.SeekStart); err != nil {
+		return 0, err
+	}
 	n, err := record.Encode(s.logFile)
 	if err != nil {
 		return 0, err
 	}
+	pos := s.writePos
+	s.writePos += int64(n)
 
 	s.bytesSinceLastIndex += n
 	if s.bytesSinceLastIndex >= IndexIntervalBytes || offset == s.BaseOffset {
@@ -129,7 +134,7 @@ func (s *Segment) Read(offset uint64) (*common.LogEntry, error) {
 }
 
 func (s *Segment) ReadAt(buf []byte, offset int64) (int, error) {
-	return s.logFile.Read(buf)
+	return s.logFile.ReadAt(buf, offset)
 }
 
 func (s *Segment) Recover() error {
@@ -168,6 +173,8 @@ func (s *Segment) Recover() error {
 	if err := s.logFile.Truncate(pos); err != nil {
 		return err
 	}
+	// Keep our fast-path end position in sync with recovered/truncated log.
+	s.writePos = pos
 
 	// truncate index if it points past log
 	s.index.TruncateAfter(uint64(pos))
