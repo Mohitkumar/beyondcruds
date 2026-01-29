@@ -1,9 +1,11 @@
 package segment
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/mohitkumar/mlog/api/common"
 )
@@ -21,9 +23,11 @@ type Segment struct {
 	NextOffset          uint64 //next offset of the segment
 	MaxOffset           uint64 //max offset of the segment
 	logFile             *os.File
+	bufWriter           *bufio.Writer // buffered writer for log file
 	index               *Index
 	bytesSinceLastIndex uint64
-	writePos            int64 // current end-of-log position
+	writePos            int64      // current end-of-log position
+	mu                  sync.Mutex // protects writes
 }
 
 func NewSegment(baseOffset uint64, dir string) (*Segment, error) {
@@ -43,6 +47,7 @@ func NewSegment(baseOffset uint64, dir string) (*Segment, error) {
 		BaseOffset: baseOffset,
 		NextOffset: baseOffset,
 		logFile:    logFile,
+		bufWriter:  bufio.NewWriterSize(logFile, 64*1024), // 64KB buffer
 		index:      index,
 		writePos:   0,
 	}, nil
@@ -64,6 +69,7 @@ func LoadExistingSegment(baseOffset uint64, dir string) (*Segment, error) {
 		BaseOffset: baseOffset,
 		NextOffset: baseOffset,
 		logFile:    logFile,
+		bufWriter:  bufio.NewWriterSize(logFile, 64*1024), // 64KB buffer
 		index:      index,
 	}
 	if err := segment.Recover(); err != nil {
@@ -83,21 +89,26 @@ func formatIndexFileName(baseOffset uint64) string {
 }
 
 func (s *Segment) Append(value []byte) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	offset := s.NextOffset
 	record := common.NewLogEntry(offset, value)
-	// Write at the current end position and advance it locally.
-	if _, err := s.logFile.Seek(s.writePos, io.SeekStart); err != nil {
-		return 0, err
-	}
-	n, err := record.Encode(s.logFile)
+	pos := s.writePos
+
+	// Use buffered writer (no Seek needed - it writes sequentially)
+	n, err := record.Encode(s.bufWriter)
 	if err != nil {
 		return 0, err
 	}
-	pos := s.writePos
 	s.writePos += int64(n)
 
 	s.bytesSinceLastIndex += n
 	if s.bytesSinceLastIndex >= IndexIntervalBytes || offset == s.BaseOffset {
+		// Flush buffer before indexing to ensure data is written
+		if err := s.bufWriter.Flush(); err != nil {
+			return 0, err
+		}
 		if err := s.index.Write(uint32(offset-s.BaseOffset), uint64(pos)); err != nil {
 			return 0, err
 		}
@@ -109,6 +120,16 @@ func (s *Segment) Append(value []byte) (uint64, error) {
 }
 
 func (s *Segment) Read(offset uint64) (*common.LogEntry, error) {
+	s.mu.Lock()
+	// Flush any pending writes before reading
+	if s.bufWriter != nil {
+		if err := s.bufWriter.Flush(); err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+	}
+	s.mu.Unlock()
+
 	if offset < s.BaseOffset || offset >= s.NextOffset {
 		return nil, fmt.Errorf("offset %d out of range [%d, %d)", offset, s.BaseOffset, s.NextOffset)
 	}
@@ -175,6 +196,10 @@ func (s *Segment) Recover() error {
 	}
 	// Keep our fast-path end position in sync with recovered/truncated log.
 	s.writePos = pos
+	// Reset buffered writer to start from recovered position
+	if s.bufWriter != nil {
+		s.bufWriter.Reset(s.logFile)
+	}
 
 	// truncate index if it points past log
 	s.index.TruncateAfter(uint64(pos))
@@ -196,6 +221,14 @@ func (s *Segment) IsFull() bool {
 }
 
 func (s *Segment) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.bufWriter != nil {
+		if err := s.bufWriter.Flush(); err != nil {
+			return err
+		}
+	}
 	if err := s.logFile.Close(); err != nil {
 		return err
 	}
@@ -206,6 +239,13 @@ func (s *Segment) Close() error {
 }
 
 func (s *Segment) Reader() io.Reader {
+	s.mu.Lock()
+	// Flush any pending writes before creating reader
+	if s.bufWriter != nil {
+		_ = s.bufWriter.Flush()
+	}
+	s.mu.Unlock()
+
 	s.logFile.Seek(0, io.SeekStart)
 	return s.logFile
 }

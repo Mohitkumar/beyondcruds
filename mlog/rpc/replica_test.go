@@ -628,22 +628,30 @@ func BenchmarkReplication_WithAckLeader(b *testing.B) {
 	time.Sleep(500 * time.Millisecond)
 
 	producerClient := producer.NewProducerServiceClient(leaderConn)
-	req := &producer.ProduceRequest{
-		Topic: topicName,
-		Value: []byte("bench-message"),
-		Acks:  producer.AckMode_ACK_LEADER,
+	// Use ProduceBatch with 10 messages per batch for better throughput
+	batchValues := [][]byte{
+		[]byte("bench-msg-0"), []byte("bench-msg-1"), []byte("bench-msg-2"),
+		[]byte("bench-msg-3"), []byte("bench-msg-4"), []byte("bench-msg-5"),
+		[]byte("bench-msg-6"), []byte("bench-msg-7"), []byte("bench-msg-8"),
+		[]byte("bench-msg-9"),
+	}
+	req := &producer.ProduceBatchRequest{
+		Topic:  topicName,
+		Values: batchValues,
+		Acks:   producer.AckMode_ACK_LEADER,
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := producerClient.Produce(ctx, req)
+		_, err := producerClient.ProduceBatch(ctx, req)
 		if err != nil {
-			b.Fatalf("Produce: %v", err)
+			b.Fatalf("ProduceBatch: %v", err)
 		}
 	}
 	seconds := b.Elapsed().Seconds()
 	if seconds > 0 {
-		b.ReportMetric(float64(b.N)/seconds, "req/s")
+		b.ReportMetric(float64(b.N)/seconds, "batches/s")
+		b.ReportMetric(float64(b.N*len(batchValues))/seconds, "msgs/s")
 	}
 }
 

@@ -56,28 +56,38 @@ func OpenIndex(filePath string) (*Index, error) {
 		return nil, err
 	}
 
+	// Use stat.Size() as the initial size - it should reflect actual written data.
+	// If the file was just created and truncated to IndexSize, stat.Size() will be IndexSize (capacity),
+	// but we'll start with size=0 and grow as we write. For existing files with data, stat.Size()
+	// should be accurate.
+	initialSize := stat.Size()
+	// If file was pre-allocated (truncated to IndexSize) but empty, start at 0
+	if initialSize == IndexSize {
+		// Check if first entry is actually written (non-zero or first entry at 0,0)
+		firstBuf := m[0:IndexEntrySize]
+		firstRel := indexEndian.Uint32(firstBuf[0:4])
+		firstPos := indexEndian.Uint64(firstBuf[4:12])
+		if firstRel == 0 && firstPos == 0 {
+			// Might be empty pre-allocated file, scan to find actual usage
+			initialSize = 0
+			for pos := int64(0); pos+IndexEntrySize <= int64(len(m)); pos += IndexEntrySize {
+				buf := m[pos : pos+IndexEntrySize]
+				rel := indexEndian.Uint32(buf[0:4])
+				p := indexEndian.Uint64(buf[4:12])
+				// Stop at first empty entry (but first (0,0) is valid)
+				if pos > 0 && rel == 0 && p == 0 {
+					break
+				}
+				initialSize += IndexEntrySize
+			}
+		}
+	}
+
 	idx := &Index{
 		file: file,
 		mmap: m,
-		size: 0,
+		size: initialSize,
 	}
-
-	// Determine how many entries are actually written.
-	// We scan until we hit an empty (0,0) entry. The only legitimate (0,0) entry is the very first
-	// index entry (base offset at log position 0), so we ignore i==0.
-	var used int64
-	capBytes := int64(len(idx.mmap))
-	for pos := int64(0); pos+IndexEntrySize <= capBytes; pos += IndexEntrySize {
-		buf := idx.mmap[pos : pos+IndexEntrySize]
-		rel := indexEndian.Uint32(buf[0:4])
-		p := indexEndian.Uint64(buf[4:12])
-
-		if pos > 0 && rel == 0 && p == 0 {
-			break
-		}
-		used += IndexEntrySize
-	}
-	idx.size = used
 
 	return idx, nil
 }

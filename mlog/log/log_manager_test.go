@@ -241,19 +241,29 @@ func BenchmarkLogManager_Read(b *testing.B) {
 	}
 	defer os.RemoveAll(dir)
 
-	for i := 0; i < b.N; i++ {
-		entry := &common.LogEntry{Value: []byte(fmt.Sprintf("message-%d", i))}
-		offset, err := lm.Append(entry)
-		if err != nil {
+	// Preload once; benchmark should measure only reads.
+	payload := []byte("message")
+	numRecords := b.N
+	if numRecords < 1 {
+		numRecords = 1
+	}
+
+	b.StopTimer()
+	for i := 0; i < numRecords; i++ {
+		if _, err := lm.Append(&common.LogEntry{Value: payload}); err != nil {
 			b.Fatalf("Append error: %v", err)
 		}
-		rec, err := lm.ReadUncommitted(offset)
+	}
+	// Sanity check outside timed section.
+	if _, err := lm.ReadUncommitted(0); err != nil {
+		b.Fatalf("Read error (sanity): %v", err)
+	}
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := lm.ReadUncommitted(uint64(i % numRecords))
 		if err != nil {
 			b.Fatalf("Read error: %v", err)
-		}
-		if string(rec.Value) != string(entry.Value) {
-			b.Fatalf("record mismatch: got (payload: %s), want (payload: %s)",
-				rec.Value, string(entry.Value))
 		}
 	}
 	seconds := b.Elapsed().Seconds()

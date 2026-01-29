@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"sync"
 )
 
 const (
@@ -11,6 +12,12 @@ const (
 )
 
 var endian = binary.BigEndian
+
+var encodeBufPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 1024) // Pre-allocated capacity for small records
+	},
+}
 
 // Record represents a log record with an offset, and value.
 // Its physical layout in the log file is as follows:
@@ -29,7 +36,16 @@ func NewLogEntry(offset uint64, value []byte) *LogEntry {
 func (r *LogEntry) Encode(w io.Writer) (uint64, error) {
 	size := RecordHeaderSize + len(r.Value)
 	payloadSize := uint32(8 + len(r.Value)) // offset (8 bytes) + value
-	buf := make([]byte, size)
+
+	// Reuse buffer from pool to avoid allocations
+	buf := encodeBufPool.Get().([]byte)
+	if cap(buf) < size {
+		buf = make([]byte, size)
+	} else {
+		buf = buf[:size]
+	}
+	defer encodeBufPool.Put(buf[:0]) // Reset length but keep capacity
+
 	endian.PutUint32(buf[4:8], payloadSize)
 	endian.PutUint64(buf[8:16], uint64(r.Offset))
 	copy(buf[16:], r.Value)
