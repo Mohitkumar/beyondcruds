@@ -37,10 +37,10 @@ type Node struct {
 
 // FollowerState tracks the state of a follower/replica
 type FollowerState struct {
-	NodeID            string
-	LastFetchTime     time.Time
-	LastFetchedOffset uint64
-	IsISR             bool
+	NodeID        string
+	LastFetchTime time.Time
+	LEO           uint64
+	IsISR         bool
 }
 
 // NewLeaderNode creates a new node that acts as a leader
@@ -70,6 +70,17 @@ func NewReplicaNode(topic string, replicaID string, log *log.LogManager, broker 
 		leaderAddr:    leaderAddr,
 		brokerManager: brokerManager,
 	}
+}
+
+func (n *Node) NewFollwerState(replicaID string, nodeId string) {
+	n.mu.Lock()
+	n.followers[replicaID] = &FollowerState{
+		NodeID:        nodeId,
+		LastFetchTime: time.Now(),
+		LEO:           0,
+		IsISR:         false,
+	}
+	n.mu.Unlock()
 }
 
 // StartReplication starts the replication process (only for replica nodes)
@@ -107,9 +118,10 @@ func (n *Node) StartReplication() error {
 		return fmt.Errorf("replication already started for replica %s", n.ReplicaID)
 	}
 	n.stopChan = make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	n.cancelFn = cancel
 	n.mu.Unlock()
-
-	go n.startReplication()
+	go n.startReplication(ctx)
 	return nil
 }
 
@@ -132,22 +144,18 @@ func (n *Node) StopReplication() {
 }
 
 // startReplication is the main replication loop for replica nodes
-func (n *Node) startReplication() {
-	ctx, cancel := context.WithCancel(context.Background())
-	n.mu.Lock()
-	n.cancelFn = cancel
-	stopCh := n.stopChan
-	n.mu.Unlock()
-
-	reconnectDelay := time.Second
+func (n *Node) startReplication(ctx context.Context) {
+	backoff := 50 * time.Millisecond
+	maxBackoff := 1 * time.Second
 
 	for {
 		select {
-		case <-stopCh:
+		case <-n.stopChan:
+			return
+		case <-ctx.Done():
 			return
 		default:
 		}
-
 		// Start replicating from current LEO (next offset to apply).
 		currentOffset := n.Log.LEO()
 
@@ -161,38 +169,43 @@ func (n *Node) startReplication() {
 		// Create stream to leader
 		stream, err := n.leaderClient.ReplicateStream(ctx, req)
 		if err != nil {
-			fmt.Printf("replica %s: failed to create replication stream: %v, retrying in %v", n.ReplicaID, err, reconnectDelay)
-			time.Sleep(reconnectDelay)
-			reconnectDelay = min(reconnectDelay*2, 30*time.Second) // Exponential backoff, max 30s
+			// Backoff on connection errors
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+			}
 			continue
 		}
+		// Reset backoff on successful connection
+		backoff = 50 * time.Millisecond
 
-		// Reset reconnect delay on successful connection
-		reconnectDelay = time.Second
-
-		// Process streamed log entries
+		// Process stream messages
 		for {
 			select {
-			case <-stopCh:
+			case <-n.stopChan:
+				return
+			case <-ctx.Done():
 				return
 			default:
 			}
 
 			resp, err := stream.Recv()
 			if err != nil {
-				fmt.Printf("replica %s: stream receive error: %v, reconnecting", n.ReplicaID, err)
-				break // Break inner loop to reconnect
+				// Stream error, reconnect
+				break
 			}
 
 			if len(resp.Entries) == 0 {
+				// No entries in this batch, continue waiting
 				continue
 			}
 
-			expectedOffset := n.Log.LEO()
-			var appliedAny bool
-			var maxApplied uint64
-
+			// If we detect a gap or write error, we must reconnect starting from our current LEO.
+			// Otherwise the leader stream (which advances its own cursor) may move past what we've applied,
+			// causing permanent gaps and no further progress.
+			reconnectNeeded := false
 			for _, entry := range resp.Entries {
+				expectedOffset := n.Log.LEO()
 				// Drop duplicates/old entries.
 				if entry.Offset < expectedOffset {
 					continue
@@ -200,38 +213,26 @@ func (n *Node) startReplication() {
 				// Enforce contiguous apply to avoid gaps.
 				if entry.Offset != expectedOffset {
 					// Gap detected; reconnect starting from our current LEO.
+					reconnectNeeded = true
 					break
 				}
 
-				off, appendErr := n.Log.Append(&common.LogEntry{Value: entry.Value})
+				_, appendErr := n.Log.Append(&common.LogEntry{Value: entry.Value})
 				if appendErr != nil {
 					fmt.Printf("replica %s: failed to append log entry at expected offset %d: %v", n.ReplicaID, expectedOffset, appendErr)
 					// Stop processing this batch; reconnect and retry.
+					reconnectNeeded = true
 					break
 				}
-				// Defensive check: LogManager.Append should return the offset it wrote.
-				if off != expectedOffset {
-					fmt.Printf("replica %s: append returned offset %d, expected %d; reconnecting", n.ReplicaID, off, expectedOffset)
-					break
-				}
-
-				appliedAny = true
-				maxApplied = off
-				expectedOffset++
 			}
 
-			if !appliedAny {
-				// Nothing applied; reconnect to resync.
+			// Report LEO once per batch. This avoids spawning goroutines per entry and
+			// keeps leader-side ACK_ALL progress updates frequent enough (batch size up to 1000).
+			_ = n.reportLEO(ctx, n.Log.LEO())
+
+			if reconnectNeeded {
+				// Break out of the stream loop so the outer loop can reconnect from our current LEO.
 				break
-			}
-
-			currentLEO := maxApplied + 1
-
-			// Report LEO to leader
-			err = n.reportLEO(ctx, currentLEO)
-			if err != nil {
-				fmt.Printf("replica %s: failed to report LEO %d to leader: %v", n.ReplicaID, currentLEO, err)
-				// Continue replication even if report fails
 			}
 		}
 	}
@@ -251,11 +252,4 @@ func (n *Node) reportLEO(ctx context.Context, leo uint64) error {
 
 	_, err := n.leaderClient.RecordLEO(ctx, req)
 	return err
-}
-
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }

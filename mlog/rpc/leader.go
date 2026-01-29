@@ -85,32 +85,27 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 
 	// Start reading from the requested offset
 	currentOffset := req.Offset
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// Use a short idle tick; when there's backlog we stream batches back-to-back.
+	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	ctx := stream.Context()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			// LEO is the next offset to write; readable offsets are [0, LEO).
-			endExclusive := leaderNode.Log.LEO()
-			if currentOffset >= endExclusive {
-				continue
-			}
-
+		// LEO is the next offset to write; readable offsets are [0, LEO).
+		endExclusive := leaderNode.Log.LEO()
+		if currentOffset < endExclusive {
 			entries := make([]*common.LogEntry, 0, batchSize)
 			for i := 0; i < int(batchSize); i++ {
-				// Refresh endExclusive occasionally so long batches don't lag behind.
+				// Refresh endExclusive so large backlogs drain efficiently.
 				endExclusive = leaderNode.Log.LEO()
 				if currentOffset >= endExclusive {
 					break
 				}
 				entry, err := leaderNode.Log.ReadUncommitted(currentOffset)
 				if err != nil {
-					// If we can't read this offset yet, stop this batch and retry next tick.
+					// If we can't read this offset yet (might be partially written or not indexed),
+					// stop this batch and retry shortly.
 					break
 				}
 				entries = append(entries, entry)
@@ -125,6 +120,15 @@ func (s *grpcServer) ReplicateStream(req *leader.ReplicateRequest, stream leader
 					return status.Errorf(codes.Internal, "failed to send entries: %v", err)
 				}
 			}
+			// Continue immediately to drain backlog faster.
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			continue
 		}
 	}
 }

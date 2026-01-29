@@ -116,27 +116,11 @@ func (tm *TopicManager) CreateTopic(topic string, replicaCount int) error {
 		}
 
 		// Track the replica locally
-		leaderNode.mu.Lock()
-		leaderNode.followers[replicaID] = &FollowerState{
-			NodeID:            replicaBroker.NodeID,
-			LastFetchTime:     time.Now(),
-			LastFetchedOffset: 0,
-			IsISR:             false,
-		}
-		leaderNode.mu.Unlock()
+		leaderNode.NewFollwerState(replicaID, replicaBroker.NodeID)
 
 		// Create local replica tracking (for leader to communicate with followers)
 		// Note: The actual replica log is on the remote broker, this is just metadata
-		replicaNode := &Node{
-			Topic:         topic,
-			Log:           nil, // Replica log is on remote broker
-			broker:        replicaBroker,
-			NodeID:        replicaBroker.NodeID,
-			ReplicaID:     replicaID,
-			IsLeader:      false,
-			leaderAddr:    tm.currentBroker.Addr,
-			brokerManager: tm.brokerManager,
-		}
+		replicaNode := NewReplicaNode(topic, replicaID, nil, replicaBroker, tm.currentBroker.Addr, tm.brokerManager)
 		topicObj.replicas[replicaID] = replicaNode
 	}
 
@@ -314,7 +298,6 @@ func (t *Topic) HandleProduce(ctx context.Context, logEntry *common.LogEntry, ac
 	if err != nil {
 		return 0, err
 	}
-
 	switch acks {
 	case producer.AckMode_ACK_LEADER:
 		return offset, nil
@@ -336,7 +319,7 @@ func (t *Topic) HandleProduce(ctx context.Context, logEntry *common.LogEntry, ac
 //   - If there are no followers at all, we return immediately (ACK_ALL == ACK_LEADER).
 func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64) error {
 	timeout := time.After(5 * time.Second)
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(10 * time.Millisecond) // Reduced from 50ms for faster response
 	defer ticker.Stop()
 
 	// Followers report LEO (next offset to write). If we append at offset N,
@@ -362,7 +345,7 @@ func (t *Topic) waitForAllFollowersToCatchUp(ctx context.Context, offset uint64)
 				continue
 			}
 			candidates++
-			if follower.LastFetchedOffset < requiredLEO {
+			if follower.LEO < requiredLEO {
 				allCaughtUp = false
 				break
 			}
@@ -402,8 +385,8 @@ func (t *Topic) maybeAdvanceHW() {
 	// HW is the highest offset replicated to a majority
 	minOffset := t.leader.Log.LEO()
 	for _, f := range t.leader.followers {
-		if f.LastFetchedOffset < minOffset {
-			minOffset = f.LastFetchedOffset
+		if f.LEO < minOffset {
+			minOffset = f.LEO
 		}
 	}
 	t.leader.Log.SetHighWatermark(minOffset)
@@ -418,7 +401,7 @@ func (t *Topic) RecordLEORemote(replicaID string, leo uint64, leoTime time.Time)
 	// Update follower state under the leader lock.
 	t.leader.mu.Lock()
 	if follower, ok := t.leader.followers[replicaID]; ok {
-		follower.LastFetchedOffset = leo
+		follower.LEO = leo
 		follower.LastFetchTime = leoTime
 		if t.leader.Log.LEO() >= 100 && leo >= t.leader.Log.LEO()-100 {
 			follower.IsISR = true
@@ -430,8 +413,6 @@ func (t *Topic) RecordLEORemote(replicaID string, leo uint64, leoTime time.Time)
 		}
 	}
 	t.leader.mu.Unlock()
-
-	// Advance HW without holding leader.mu (maybeAdvanceHW locks internally).
 	t.maybeAdvanceHW()
 	return nil
 }

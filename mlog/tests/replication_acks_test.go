@@ -395,6 +395,21 @@ func TestProduceWithAckLeader_10000Messages(t *testing.T) {
 
 	t.Logf("produced %d ACK_LEADER messages in %v", n, time.Since(start))
 
+	// Verify leader  has all messages.
+	leaderLogMgr, err := log.NewLogManager(filepath.Join(servers.leaderBaseDir, topicName))
+	if err != nil {
+		t.Fatalf("failed to create leader log manager: %v", err)
+	}
+
+	leaderEntry, err := leaderLogMgr.ReadUncommitted(lastOffset)
+	if err != nil {
+		t.Fatalf("failed to read last offset %d from leader log: %v", lastOffset, err)
+	}
+	if string(leaderEntry.Value) != fmt.Sprintf("msg-%d", n-1) {
+		t.Fatalf("leader log: expected message 'msg-%d' at offset %d, got '%s'", n-1, lastOffset, string(leaderEntry.Value))
+	}
+	leaderLogMgr.Close()
+
 	// With ACK_LEADER, we need to wait longer for replication to catch up.
 	// Give it time for all messages to replicate.
 	time.Sleep(10 * time.Second)
@@ -435,21 +450,6 @@ func TestProduceWithAckLeader_10000Messages(t *testing.T) {
 	}
 	if string(replicaEntry.Value) != fmt.Sprintf("msg-%d", n-1) {
 		t.Fatalf("replica log: expected message 'msg-%d' at offset %d, got '%s'", n-1, lastOffset, string(replicaEntry.Value))
-	}
-
-	// Verify leader also has all messages.
-	leaderLogMgr, err := log.NewLogManager(filepath.Join(servers.leaderBaseDir, topicName))
-	if err != nil {
-		t.Fatalf("failed to create leader log manager: %v", err)
-	}
-	defer leaderLogMgr.Close()
-
-	leaderEntry, err := leaderLogMgr.ReadUncommitted(lastOffset)
-	if err != nil {
-		t.Fatalf("failed to read last offset %d from leader log: %v", lastOffset, err)
-	}
-	if string(leaderEntry.Value) != fmt.Sprintf("msg-%d", n-1) {
-		t.Fatalf("leader log: expected message 'msg-%d' at offset %d, got '%s'", n-1, lastOffset, string(leaderEntry.Value))
 	}
 
 	t.Logf("verified replication: all %d ACK_LEADER messages present in both leader and replica logs", n)

@@ -14,8 +14,6 @@ type Broker struct {
 	conn   *grpc.ClientConn
 }
 
-// NewBroker creates a new broker without establishing a connection.
-// The connection will be created lazily when GetConn() is first called.
 func NewBroker(nodeID string, addr string) *Broker {
 	return &Broker{
 		NodeID: nodeID,
@@ -40,13 +38,6 @@ func (b *Broker) GetConn() (*grpc.ClientConn, error) {
 	}
 	b.conn = conn
 	return b.conn, nil
-}
-
-// Connect explicitly establishes the connection to the broker.
-// This is optional as GetConn() will create the connection lazily.
-func (b *Broker) Connect() error {
-	_, err := b.GetConn()
-	return err
 }
 
 func (b *Broker) Close() error {

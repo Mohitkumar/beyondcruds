@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,5 +86,178 @@ func TestLogManager_Read_WithHighWatermark(t *testing.T) {
 	}
 	if string(readEntry3.Value) != "message-3" {
 		t.Fatalf("expected 'message-3', got '%s'", string(readEntry3.Value))
+	}
+}
+
+func TestLogLeo(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "test-log")
+	lm, err := NewLogManager(dir)
+	if err != nil {
+		t.Fatalf("NewLogManager error: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	// Append some entries
+	entry1 := &common.LogEntry{Value: []byte("message-1")}
+	offset1, err := lm.Append(entry1)
+	if err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+	if offset1 != 0 {
+		t.Fatalf("expected offset 0, got %d", offset1)
+	}
+
+	entry2 := &common.LogEntry{Value: []byte("message-2")}
+	offset2, err := lm.Append(entry2)
+	if err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+	if offset2 != 1 {
+		t.Fatalf("expected offset 1, got %d", offset2)
+	}
+
+	entry3 := &common.LogEntry{Value: []byte("message-3")}
+	offset3, err := lm.Append(entry3)
+	if err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+	if offset3 != 2 {
+		t.Fatalf("expected offset 2, got %d", offset3)
+	}
+
+	if lm.LEO() != 3 {
+		t.Fatalf("expected LEO 3, got %d", offset3)
+	}
+}
+
+func TestLogLeoRestore(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "test-log")
+	lm, err := NewLogManager(dir)
+	if err != nil {
+		t.Fatalf("NewLogManager error: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	// Append some entries
+	entry1 := &common.LogEntry{Value: []byte("message-1")}
+	offset1, err := lm.Append(entry1)
+	if err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+	if offset1 != 0 {
+		t.Fatalf("expected offset 0, got %d", offset1)
+	}
+
+	entry2 := &common.LogEntry{Value: []byte("message-2")}
+	offset2, err := lm.Append(entry2)
+	if err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+	if offset2 != 1 {
+		t.Fatalf("expected offset 1, got %d", offset2)
+	}
+
+	entry3 := &common.LogEntry{Value: []byte("message-3")}
+	offset3, err := lm.Append(entry3)
+	if err != nil {
+		t.Fatalf("Append error: %v", err)
+	}
+	if offset3 != 2 {
+		t.Fatalf("expected offset 2, got %d", offset3)
+	}
+
+	lm.Close()
+
+	lm, err = NewLogManager(dir)
+	if err != nil {
+		t.Fatalf("NewLogManager error: %v", err)
+	}
+	if lm.LEO() != 3 {
+		t.Fatalf("expected LEO 3, got %d", lm.LEO())
+	}
+}
+
+func TestLogLeoRestoreLarge(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "test-log")
+	lm, err := NewLogManager(dir)
+	if err != nil {
+		t.Fatalf("NewLogManager error: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	const maxEntries = 100000
+	// Append some entries
+	for i := 0; i < maxEntries; i++ {
+		entry := &common.LogEntry{Value: []byte(fmt.Sprintf("message-%d", i))}
+		offset, err := lm.Append(entry)
+		if err != nil {
+			t.Fatalf("Append error: %v", err)
+		}
+		if offset != uint64(i) {
+			t.Fatalf("expected offset 0, got %d", offset)
+		}
+	}
+
+	lm.Close()
+
+	lm, err = NewLogManager(dir)
+	t.Logf("segment counts %d", lm.SegmentCount())
+	if err != nil {
+		t.Fatalf("NewLogManager error: %v", err)
+	}
+	if lm.LEO() != maxEntries {
+		t.Fatalf("expected LEO %d, got %d", maxEntries, lm.LEO())
+	}
+}
+
+func BenchmarkLogManager_Append(b *testing.B) {
+	dir := filepath.Join(b.TempDir(), "test-log")
+	lm, err := NewLogManager(dir)
+	if err != nil {
+		b.Fatalf("NewLogManager error: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	for i := 0; i < b.N; i++ {
+		entry := &common.LogEntry{Value: []byte(fmt.Sprintf("message-%d", i))}
+		offset, err := lm.Append(entry)
+		if err != nil {
+			b.Fatalf("Append error: %v", err)
+		}
+		if offset != uint64(i) {
+			b.Fatalf("expected offset 0, got %d", offset)
+		}
+	}
+	seconds := b.Elapsed().Seconds()
+	if seconds > 0 {
+		b.ReportMetric(float64(b.N)/seconds, "req/s")
+	}
+}
+func BenchmarkLogManager_Read(b *testing.B) {
+	dir := filepath.Join(b.TempDir(), "test-log")
+	lm, err := NewLogManager(dir)
+	if err != nil {
+		b.Fatalf("NewLogManager error: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	for i := 0; i < b.N; i++ {
+		entry := &common.LogEntry{Value: []byte(fmt.Sprintf("message-%d", i))}
+		offset, err := lm.Append(entry)
+		if err != nil {
+			b.Fatalf("Append error: %v", err)
+		}
+		rec, err := lm.ReadUncommitted(offset)
+		if err != nil {
+			b.Fatalf("Read error: %v", err)
+		}
+		if string(rec.Value) != string(entry.Value) {
+			b.Fatalf("record mismatch: got (payload: %s), want (payload: %s)",
+				rec.Value, string(entry.Value))
+		}
+	}
+	seconds := b.Elapsed().Seconds()
+	if seconds > 0 {
+		b.ReportMetric(float64(b.N)/seconds, "req/s")
 	}
 }

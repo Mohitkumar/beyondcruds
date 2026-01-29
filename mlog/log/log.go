@@ -160,6 +160,10 @@ func (l *Log) HighestOffset() uint64 {
 	return l.activeSegment.MaxOffset
 }
 
+func (l *Log) SegmentCount() int {
+	return len(l.segments)
+}
+
 func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

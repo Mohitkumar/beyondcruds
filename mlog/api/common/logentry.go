@@ -48,9 +48,18 @@ func DecodeLogEntry(r io.Reader) (*LogEntry, uint64, error) {
 	crc := endian.Uint32(header[0:4])
 	size := endian.Uint32(header[4:8])
 
+	// Validate size: must be at least 8 bytes (for offset) + payload
+	// Size field represents: 8 bytes (offset) + value length
+	if size < 8 {
+		return nil, 0, io.ErrUnexpectedEOF
+	}
+
 	data := make([]byte, size)
 	if _, err := io.ReadFull(r, data); err != nil {
 		return nil, 0, err
+	}
+	if len(data) < 8 {
+		return nil, 0, io.ErrUnexpectedEOF
 	}
 	if crc32.ChecksumIEEE(data) != crc {
 		return nil, 0, io.ErrUnexpectedEOF
