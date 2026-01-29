@@ -8,6 +8,8 @@ option go_package = "github.com/mohitkumar/mlog/api/producer";
 service ProducerService {
     // Produce appends a record to the log and returns the partition and offset.
   rpc Produce(ProduceRequest) returns (ProduceResponse);
+  // ProduceBatch appends multiple records to the log and returns the base/last offsets.
+  rpc ProduceBatch(ProduceBatchRequest) returns (ProduceBatchResponse);
 }
 
 enum AckMode {
@@ -24,4 +26,16 @@ message ProduceRequest {
 
 message ProduceResponse {
   uint64 offset = 1;
+}
+
+message ProduceBatchRequest {
+  string topic = 1;
+  repeated bytes values = 2;
+  AckMode acks = 3;
+}
+
+message ProduceBatchResponse {
+  uint64 base_offset = 1;
+  uint64 last_offset = 2;
+  uint32 count = 3;
 }

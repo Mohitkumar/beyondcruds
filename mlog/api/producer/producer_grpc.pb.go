@@ -24,6 +24,8 @@ const _ = grpc.SupportPackageIsVersion7
 type ProducerServiceClient interface {
 	// Produce appends a record to the log and returns the partition and offset.
 	Produce(ctx context.Context, in *ProduceRequest, opts ...grpc.CallOption) (*ProduceResponse, error)
+	// ProduceBatch appends multiple records to the log and returns the base/last offsets.
+	ProduceBatch(ctx context.Context, in *ProduceBatchRequest, opts ...grpc.CallOption) (*ProduceBatchResponse, error)
 }
 
 type producerServiceClient struct {
@@ -43,12 +45,23 @@ func (c *producerServiceClient) Produce(ctx context.Context, in *ProduceRequest,
 	return out, nil
 }
 
+func (c *producerServiceClient) ProduceBatch(ctx context.Context, in *ProduceBatchRequest, opts ...grpc.CallOption) (*ProduceBatchResponse, error) {
+	out := new(ProduceBatchResponse)
+	err := c.cc.Invoke(ctx, "/logapi.ProducerService/ProduceBatch", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProducerServiceServer is the server API for ProducerService service.
 // All implementations must embed UnimplementedProducerServiceServer
 // for forward compatibility
 type ProducerServiceServer interface {
 	// Produce appends a record to the log and returns the partition and offset.
 	Produce(context.Context, *ProduceRequest) (*ProduceResponse, error)
+	// ProduceBatch appends multiple records to the log and returns the base/last offsets.
+	ProduceBatch(context.Context, *ProduceBatchRequest) (*ProduceBatchResponse, error)
 	mustEmbedUnimplementedProducerServiceServer()
 }
 
@@ -58,6 +71,9 @@ type UnimplementedProducerServiceServer struct {
 
 func (UnimplementedProducerServiceServer) Produce(context.Context, *ProduceRequest) (*ProduceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Produce not implemented")
+}
+func (UnimplementedProducerServiceServer) ProduceBatch(context.Context, *ProduceBatchRequest) (*ProduceBatchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProduceBatch not implemented")
 }
 func (UnimplementedProducerServiceServer) mustEmbedUnimplementedProducerServiceServer() {}
 
@@ -90,6 +106,24 @@ func _ProducerService_Produce_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProducerService_ProduceBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProduceBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProducerServiceServer).ProduceBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/logapi.ProducerService/ProduceBatch",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProducerServiceServer).ProduceBatch(ctx, req.(*ProduceBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProducerService_ServiceDesc is the grpc.ServiceDesc for ProducerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -100,6 +134,10 @@ var ProducerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Produce",
 			Handler:    _ProducerService_Produce_Handler,
+		},
+		{
+			MethodName: "ProduceBatch",
+			Handler:    _ProducerService_ProduceBatch_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

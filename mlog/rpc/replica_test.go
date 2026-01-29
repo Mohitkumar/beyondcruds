@@ -508,22 +508,42 @@ func TestReplication_CatchUpTime_10000Messages(t *testing.T) {
 	producerClient := producer.NewProducerServiceClient(leaderConn)
 
 	const n = 10000
+	const batchSize = 100 // Batch 100 messages at a time
 	produceStart := time.Now()
 	var lastOffset uint64
-	for i := 0; i < n; i++ {
-		resp, err := producerClient.Produce(ctx, &producer.ProduceRequest{
-			Topic: topicName,
-			Value: []byte("msg"),
-			Acks:  producer.AckMode_ACK_LEADER,
+	var baseOffset uint64
+
+	// Produce in batches
+	for i := 0; i < n; i += batchSize {
+		batchCount := batchSize
+		if i+batchSize > n {
+			batchCount = n - i
+		}
+		values := make([][]byte, batchCount)
+		for j := 0; j < batchCount; j++ {
+			values[j] = []byte("msg")
+		}
+
+		resp, err := producerClient.ProduceBatch(ctx, &producer.ProduceBatchRequest{
+			Topic:  topicName,
+			Values: values,
+			Acks:   producer.AckMode_ACK_LEADER,
 		})
 		if err != nil {
-			t.Fatalf("Produce %d: %v", i, err)
+			t.Fatalf("ProduceBatch at i=%d: %v", i, err)
 		}
-		lastOffset = resp.Offset
+		if i == 0 {
+			baseOffset = resp.BaseOffset
+		}
+		lastOffset = resp.LastOffset
+		if resp.Count != uint32(batchCount) {
+			t.Fatalf("ProduceBatch at i=%d: expected count %d, got %d", i, batchCount, resp.Count)
+		}
 	}
 	produceDuration := time.Since(produceStart)
-	if lastOffset != n-1 {
-		t.Fatalf("expected last offset %d, got %d", n-1, lastOffset)
+	expectedLastOffset := baseOffset + uint64(n) - 1
+	if lastOffset != expectedLastOffset {
+		t.Fatalf("expected last offset %d, got %d (base=%d)", expectedLastOffset, lastOffset, baseOffset)
 	}
 
 	replicaLogMgr, err := log.NewLogManager(filepath.Join(followerSrv.BaseDir, topicName, "replica-0"))

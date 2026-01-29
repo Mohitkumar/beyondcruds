@@ -147,3 +147,114 @@ func BenchmarkProduce(b *testing.B) {
 		b.ReportMetric(float64(b.N)/seconds, "req/s")
 	}
 }
+
+func TestProduceBatch(t *testing.T) {
+	ts := testutil.SetupTestServerWithTopic(t, "node-1", "producer-test", "test-topic", 0, NewGrpcServer)
+	defer ts.Cleanup()
+
+	conn, err := ts.GetConn()
+	if err != nil {
+		t.Fatalf("GetConn: %v", err)
+	}
+	defer conn.Close()
+
+	client := producer.NewProducerServiceClient(conn)
+	ctx := context.Background()
+	resp, err := client.ProduceBatch(ctx, &producer.ProduceBatchRequest{
+		Topic:  "test-topic",
+		Values: [][]byte{[]byte("a"), []byte("b"), []byte("c")},
+		Acks:   producer.AckMode_ACK_LEADER,
+	})
+	if err != nil {
+		t.Fatalf("ProduceBatch: %v", err)
+	}
+	if resp.Count != 3 {
+		t.Fatalf("expected count 3, got %d", resp.Count)
+	}
+	if resp.BaseOffset != 0 || resp.LastOffset != 2 {
+		t.Fatalf("expected offsets base=0,last=2 got base=%d,last=%d", resp.BaseOffset, resp.LastOffset)
+	}
+}
+
+func TestProduceBatch_TopicNotFound(t *testing.T) {
+	ts := testutil.SetupTestServerWithTopic(t, "node-1", "producer-test", "test-topic", 0, NewGrpcServer)
+	defer ts.Cleanup()
+
+	conn, err := ts.GetConn()
+	if err != nil {
+		t.Fatalf("GetConn: %v", err)
+	}
+	defer conn.Close()
+
+	client := producer.NewProducerServiceClient(conn)
+	_, err = client.ProduceBatch(context.Background(), &producer.ProduceBatchRequest{
+		Topic:  "missing",
+		Values: [][]byte{[]byte("x")},
+		Acks:   producer.AckMode_ACK_LEADER,
+	})
+	if err == nil {
+		t.Fatal("expected error for unknown topic")
+	}
+}
+
+func TestProduceBatch_InvalidArgs(t *testing.T) {
+	ts := testutil.SetupTestServerWithTopic(t, "node-1", "producer-test", "test-topic", 0, NewGrpcServer)
+	defer ts.Cleanup()
+
+	conn, err := ts.GetConn()
+	if err != nil {
+		t.Fatalf("GetConn: %v", err)
+	}
+	defer conn.Close()
+
+	client := producer.NewProducerServiceClient(conn)
+
+	_, err = client.ProduceBatch(context.Background(), &producer.ProduceBatchRequest{
+		Topic:  "",
+		Values: [][]byte{[]byte("x")},
+		Acks:   producer.AckMode_ACK_LEADER,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty topic")
+	}
+
+	_, err = client.ProduceBatch(context.Background(), &producer.ProduceBatchRequest{
+		Topic:  "test-topic",
+		Values: nil,
+		Acks:   producer.AckMode_ACK_LEADER,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty values")
+	}
+}
+
+func BenchmarkProduceBatch(b *testing.B) {
+	ts := testutil.SetupTestServerWithTopic(b, "node-1", "producer-bench", "test-topic", 0, NewGrpcServer)
+	defer ts.Cleanup()
+
+	conn, err := ts.GetConn()
+	if err != nil {
+		b.Fatalf("GetConn: %v", err)
+	}
+	defer conn.Close()
+
+	client := producer.NewProducerServiceClient(conn)
+	ctx := context.Background()
+	req := &producer.ProduceBatchRequest{
+		Topic:  "test-topic",
+		Values: [][]byte{[]byte("a"), []byte("b"), []byte("c"), []byte("d"), []byte("e"), []byte("f"), []byte("g"), []byte("h"), []byte("i"), []byte("j")},
+		Acks:   producer.AckMode_ACK_LEADER,
+	}
+
+	for b.Loop() {
+		_, err := client.ProduceBatch(ctx, req)
+		if err != nil {
+			b.Fatalf("ProduceBatch: %v", err)
+		}
+	}
+	seconds := b.Elapsed().Seconds()
+	if seconds > 0 {
+		b.ReportMetric(float64(b.N)/seconds, "batches/s")
+		b.ReportMetric(float64(b.N*len(req.Values))/seconds, "msgs/s")
+	}
+}

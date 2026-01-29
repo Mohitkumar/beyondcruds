@@ -249,28 +249,44 @@ func TestProduceWithAckAll_10000Messages(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	const n = 10000
+	const batchSize = 100 // Batch 100 messages at a time
 	start := time.Now()
 	var lastOffset uint64
+	var baseOffset uint64
 
-	for i := 0; i < n; i++ {
-		val := []byte(fmt.Sprintf("msg-%d", i))
-		resp, err := producerClient.Produce(ctx, &producer.ProduceRequest{
-			Topic: topicName,
-			Value: val,
-			Acks:  producer.AckMode_ACK_ALL,
+	// Produce in batches
+	for i := 0; i < n; i += batchSize {
+		batchCount := batchSize
+		if i+batchSize > n {
+			batchCount = n - i
+		}
+		values := make([][]byte, batchCount)
+		for j := 0; j < batchCount; j++ {
+			values[j] = []byte(fmt.Sprintf("msg-%d", i+j))
+		}
+
+		resp, err := producerClient.ProduceBatch(ctx, &producer.ProduceBatchRequest{
+			Topic:  topicName,
+			Values: values,
+			Acks:   producer.AckMode_ACK_ALL,
 		})
 		if err != nil {
-			t.Fatalf("Produce ACK_ALL i=%d error: %v", i, err)
+			t.Fatalf("ProduceBatch ACK_ALL at i=%d error: %v", i, err)
 		}
-		// Warmup is at offset 0, so msg-0 should be at offset 1.
-		wantOffset := uint64(i + 1)
-		if resp.Offset != wantOffset {
-			t.Fatalf("Produce ACK_ALL i=%d: expected offset %d, got %d", i, wantOffset, resp.Offset)
+		if i == 0 {
+			baseOffset = resp.BaseOffset
+			// Warmup is at offset 0, so first batch should start at offset 1.
+			if baseOffset != 1 {
+				t.Fatalf("ProduceBatch ACK_ALL: expected base offset 1, got %d", baseOffset)
+			}
 		}
-		lastOffset = resp.Offset
+		lastOffset = resp.LastOffset
+		if resp.Count != uint32(batchCount) {
+			t.Fatalf("ProduceBatch ACK_ALL at i=%d: expected count %d, got %d", i, batchCount, resp.Count)
+		}
 	}
 
-	t.Logf("produced %d ACK_ALL messages in %v", n, time.Since(start))
+	t.Logf("produced %d ACK_ALL messages in %v (using ProduceBatch)", n, time.Since(start))
 
 	// Give it time for all messages to replicate.
 	time.Sleep(15 * time.Second)
@@ -372,28 +388,44 @@ func TestProduceWithAckLeader_10000Messages(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	const n = 10000
+	const batchSize = 100 // Batch 100 messages at a time
 	start := time.Now()
 	var lastOffset uint64
+	var baseOffset uint64
 
-	for i := 0; i < n; i++ {
-		val := []byte(fmt.Sprintf("msg-%d", i))
-		resp, err := producerClient.Produce(ctx, &producer.ProduceRequest{
-			Topic: topicName,
-			Value: val,
-			Acks:  producer.AckMode_ACK_LEADER,
+	// Produce in batches
+	for i := 0; i < n; i += batchSize {
+		batchCount := batchSize
+		if i+batchSize > n {
+			batchCount = n - i
+		}
+		values := make([][]byte, batchCount)
+		for j := 0; j < batchCount; j++ {
+			values[j] = []byte(fmt.Sprintf("msg-%d", i+j))
+		}
+
+		resp, err := producerClient.ProduceBatch(ctx, &producer.ProduceBatchRequest{
+			Topic:  topicName,
+			Values: values,
+			Acks:   producer.AckMode_ACK_LEADER,
 		})
 		if err != nil {
-			t.Fatalf("Produce ACK_LEADER i=%d error: %v", i, err)
+			t.Fatalf("ProduceBatch ACK_LEADER at i=%d error: %v", i, err)
 		}
-		// Warmup is at offset 0, so msg-0 should be at offset 1.
-		wantOffset := uint64(i + 1)
-		if resp.Offset != wantOffset {
-			t.Fatalf("Produce ACK_LEADER i=%d: expected offset %d, got %d", i, wantOffset, resp.Offset)
+		if i == 0 {
+			baseOffset = resp.BaseOffset
+			// Warmup is at offset 0, so first batch should start at offset 1.
+			if baseOffset != 1 {
+				t.Fatalf("ProduceBatch ACK_LEADER: expected base offset 1, got %d", baseOffset)
+			}
 		}
-		lastOffset = resp.Offset
+		lastOffset = resp.LastOffset
+		if resp.Count != uint32(batchCount) {
+			t.Fatalf("ProduceBatch ACK_LEADER at i=%d: expected count %d, got %d", i, batchCount, resp.Count)
+		}
 	}
 
-	t.Logf("produced %d ACK_LEADER messages in %v", n, time.Since(start))
+	t.Logf("produced %d ACK_LEADER messages in %v (using ProduceBatch)", n, time.Since(start))
 
 	// Verify leader  has all messages.
 	leaderLogMgr, err := log.NewLogManager(filepath.Join(servers.leaderBaseDir, topicName))

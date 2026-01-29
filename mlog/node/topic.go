@@ -312,6 +312,44 @@ func (t *Topic) HandleProduce(ctx context.Context, logEntry *common.LogEntry, ac
 	return offset, nil
 }
 
+// HandleProduceBatch appends multiple records and returns (baseOffset, lastOffset).
+// For ACK_ALL, it waits once for the last offset to be replicated.
+func (t *Topic) HandleProduceBatch(ctx context.Context, values [][]byte, acks producer.AckMode) (uint64, uint64, error) {
+	if t.leader == nil {
+		return 0, 0, fmt.Errorf("topic %s has no leader", t.Name)
+	}
+	if len(values) == 0 {
+		return 0, 0, fmt.Errorf("values cannot be empty")
+	}
+
+	var (
+		base uint64
+		last uint64
+	)
+	for i, v := range values {
+		off, err := t.leader.Log.Append(&common.LogEntry{Value: v})
+		if err != nil {
+			return 0, 0, err
+		}
+		if i == 0 {
+			base = off
+		}
+		last = off
+	}
+
+	switch acks {
+	case producer.AckMode_ACK_LEADER:
+		return base, last, nil
+	case producer.AckMode_ACK_ALL:
+		if err := t.waitForAllFollowersToCatchUp(ctx, last); err != nil {
+			return 0, 0, fmt.Errorf("failed to wait for all followers to catch up: %w", err)
+		}
+		return base, last, nil
+	default:
+		return 0, 0, fmt.Errorf("invalid ack mode: %s", acks)
+	}
+}
+
 // waitForAllFollowersToCatchUp waits for all required followers to catch up to the given offset.
 // Semantics:
 //   - If there are ISR followers, we wait on ISR only.
